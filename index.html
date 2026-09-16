@@ -119,6 +119,7 @@ margin-bottom:8px
 </div>
 <input id="file" type="file" accept=".xlsx,.xls" hidden>
 <button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
+<button id="zerarRoteirizacaoBtn" type="button" style="background:#555;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;margin-left:6px">ZERAR ROTEIRIZAÇÃO</button>
 <div id="status" class="small">Selecione o Excel. Aba usada: <b>ROTA</b>.</div>
 
 <div class="box somenteEdicao">
@@ -904,5 +905,36 @@ document.getElementById('file').addEventListener('change',async e=>{
 });
 carregarLocal(); desenharGrupos();
 </script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const btn = document.getElementById('zerarRoteirizacaoBtn');
+  if(!btn) return;
+
+  btn.addEventListener('click', function(){
+    const confirmar = confirm(
+      'Deseja zerar a roteirização atual?\n\n' +
+      'As rotas que aparecem nesta tela serão apagadas do navegador. ' +
+      'Arquivos Excel de roteirizações salvas anteriormente NÃO serão excluídos.'
+    );
+    if(!confirmar) return;
+
+      localStorage.removeItem('gruposRotaV1');
+
+    // Limpa também os estados em memória mais comuns desta aplicação.
+    try {
+      if(typeof grupos !== 'undefined' && Array.isArray(grupos)) grupos.splice(0, grupos.length);
+      if(typeof selecionados !== 'undefined' && selecionados.clear) selecionados.clear();
+      if(typeof modoVisualizacao !== 'undefined') modoVisualizacao = false;
+    } catch(e) {
+      console.warn('Estado em memória será limpo ao recarregar.', e);
+    }
+
+    // Reabre a aplicação limpa, sem apagar os arquivos históricos salvos no computador.
+    window.location.reload();
+  });
+});
+</script>
+
 </body>
 </html>
