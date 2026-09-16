@@ -356,9 +356,21 @@ function desenharGrupos(){
   box.innerHTML='';
   grupos.forEach((g,gi)=>{
     let qtd=0,peso=0;
-    pontos.forEach(p=>{if(g.itens.includes(chave(p))){qtd++;peso+=pesoNum(p.peso)}});
+    const cidades=[];
+    pontos.forEach(p=>{
+      if(g.itens.includes(chave(p))){
+        qtd++;
+        peso+=pesoNum(p.peso);
+        const cidade=String(p.cidade||'').trim();
+        if(cidade && !cidades.some(c=>c.toLocaleUpperCase('pt-BR')===cidade.toLocaleUpperCase('pt-BR'))){
+          cidades.push(cidade);
+        }
+      }
+    });
+    cidades.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+    const cidadesTexto=cidades.length ? cidades.join(', ') : 'Cidade não informada';
     const d=document.createElement('div'); d.className='grupo';
-    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow"><b>${g.nome}</b><br>${qtd} entregas | ${fmt(peso)} de peso</span><div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
+    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow"><b>${g.nome}</b> — <b>${cidadesTexto}</b><br>${qtd} entregas | ${fmt(peso)} de peso</span><div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
     box.appendChild(d);
 
     const itensBox=document.createElement('div');
