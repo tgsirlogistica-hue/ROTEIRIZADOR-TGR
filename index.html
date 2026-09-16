@@ -92,6 +92,9 @@ margin-bottom:8px
   .brandTitle h3{font-size:17px}
 }
 
+.modoVisualizacao .somenteEdicao{display:none!important}
+.modoVisualizacao #gerarCsv{display:none!important}
+
 .tooltipPlaca{
   background:#fff!important;
   color:#222!important;
@@ -118,7 +121,7 @@ margin-bottom:8px
 <button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
 <div id="status" class="small">Selecione o Excel. Aba usada: <b>ROTA</b>.</div>
 
-<div class="box">
+<div class="box somenteEdicao">
 <div><b>Selecionadas:</b> <span id="qtd">0</span></div>
 <div><b>Peso total:</b> <span id="peso">0,00</span></div>
 <div class="row">
@@ -139,8 +142,10 @@ margin-bottom:8px
 <div class="tituloRotas">ROTAS SALVAS</div>
 <div id="grupos" class="small">Nenhum grupo salvo.</div>
 <div class="row">
+<button id="salvarRoteirizacao" type="button">SALVAR ROTEIRIZAÇÃO</button>
 <button id="gerarCsv" type="button">GERAR RELATÓRIO CSV</button>
 </div>
+<div id="modoHistorico" class="small" style="display:none;margin-top:8px"><b>Modo visualização:</b> esta roteirização foi restaurada do arquivo salvo. Zoom, mapa, placas, cidades e informações dos clientes continuam disponíveis.</div>
 <div class="small">
 O CSV será gerado com: Código do cliente, VD, SV, Número do pedido, Peso, Rota, Motorista, Cidade, Latitude, Longitude, Link GPS e Status do pedido. Pedidos sem rota serão listados ao final como Não roteirizado.
 </div>
@@ -173,6 +178,9 @@ let selecionados=new Set();
 let grupos=[];
 let indiceEquipes=new Map();
 let placasDisponiveis=[];
+let workbookAtual=null;
+let nomeArquivoAtual='roteirizacao.xlsx';
+let modoVisualizacao=false;
 const cores=[
   '#0047AB', // azul cobalto
   '#00A8E8', // azul céu forte
@@ -331,6 +339,76 @@ function atualizarPreview(total){
     }).join('');
 }
 
+function aplicarModoVisualizacao(ativo){
+  modoVisualizacao=!!ativo;
+  document.body.classList.toggle('modoVisualizacao',modoVisualizacao);
+  const aviso=document.getElementById('modoHistorico');
+  if(aviso) aviso.style.display=modoVisualizacao?'block':'none';
+  if(modoVisualizacao){
+    selecionados.clear();
+    document.getElementById('status').innerHTML='<b>Roteirização salva aberta para visualização.</b><br>Use o zoom, mova o mapa, passe o mouse sobre os clientes para ver a placa e clique para consultar as informações.';
+  }
+}
+
+function dadosRotasParaPlanilha(){
+  const linhas=[['TIPO','PLACA','COR','CHAVE_ITEM','DATA_SALVAMENTO']];
+  const agora=new Date().toISOString();
+  grupos.forEach(g=>{
+    (g.itens||[]).forEach(k=>linhas.push(['ROTA',String(g.nome||''),String(g.cor||''),String(k||''),agora]));
+  });
+  return linhas;
+}
+
+function restaurarRotasDaPlanilha(wb){
+  const nome=wb.SheetNames.find(n=>n.trim().toUpperCase()==='ROTAS_SALVAS');
+  if(!nome) return false;
+  const linhas=XLSX.utils.sheet_to_json(wb.Sheets[nome],{header:1,defval:''});
+  if(linhas.length<2) return false;
+  const mapa=new Map();
+  linhas.slice(1).forEach(r=>{
+    if(String(r[0]||'').toUpperCase()!=='ROTA') return;
+    const placa=String(r[1]||'').trim();
+    const cor=String(r[2]||'').trim()||proximaCor();
+    const item=String(r[3]||'').trim();
+    if(!placa || !item) return;
+    if(!mapa.has(placa)) mapa.set(placa,{nome:placa,cor,itens:[]});
+    if(!mapa.get(placa).itens.includes(item)) mapa.get(placa).itens.push(item);
+  });
+  const restaurados=[...mapa.values()];
+  if(!restaurados.length) return false;
+  grupos=restaurados;
+  salvarLocal();
+  return true;
+}
+
+function salvarRoteirizacaoNoExcel(){
+  if(!workbookAtual){alert('Selecione a planilha antes de salvar a roteirização.');return;}
+  if(!grupos.length){alert('Crie pelo menos uma rota antes de salvar.');return;}
+
+  const wb=workbookAtual;
+  const antigo=wb.SheetNames.find(n=>n.trim().toUpperCase()==='ROTAS_SALVAS');
+  if(antigo){
+    delete wb.Sheets[antigo];
+    wb.SheetNames=wb.SheetNames.filter(n=>n!==antigo);
+  }
+  const ws=XLSX.utils.aoa_to_sheet(dadosRotasParaPlanilha());
+  XLSX.utils.book_append_sheet(wb,ws,'ROTAS_SALVAS');
+  wb.Workbook=wb.Workbook||{};
+  wb.Workbook.Sheets=wb.Workbook.Sheets||[];
+  const idx=wb.SheetNames.indexOf('ROTAS_SALVAS');
+  while(wb.Workbook.Sheets.length<wb.SheetNames.length) wb.Workbook.Sheets.push({});
+  wb.Workbook.Sheets[idx]=wb.Workbook.Sheets[idx]||{};
+  wb.Workbook.Sheets[idx].Hidden=1;
+
+  const base=(nomeArquivoAtual||'roteirizacao.xlsx').replace(/\.xlsx?$/i,'');
+  const agora=new Date(); const pad=n=>String(n).padStart(2,'0');
+  const nome=`${base}_ROTAS_SALVAS_${agora.getFullYear()}-${pad(agora.getMonth()+1)}-${pad(agora.getDate())}.xlsx`;
+  XLSX.writeFile(wb,nome);
+  document.getElementById('status').innerHTML=`<b>Roteirização salva.</b><br>Arquivo gerado: ${nome}. Ao abrir esse Excel novamente neste Roteirizador, as rotas poderão ser restauradas.`;
+}
+
+document.getElementById('salvarRoteirizacao').addEventListener('click',salvarRoteirizacaoNoExcel);
+
 function atualizar(){
   let total=0;
   pontos.forEach((p,i)=>{
@@ -370,7 +448,10 @@ function desenharGrupos(){
     cidades.sort((a,b)=>a.localeCompare(b,'pt-BR'));
     const cidadesTexto=cidades.length ? cidades.join(', ') : 'Cidade não informada';
     const d=document.createElement('div'); d.className='grupo';
-    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow"><b>${g.nome}</b> — <b>${cidadesTexto}</b><br>${qtd} entregas | ${fmt(peso)} de peso</span><div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
+    const acoes=modoVisualizacao
+      ? `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button></div>`
+      : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
+    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow"><b>${g.nome}</b> — <b>${cidadesTexto}</b><br>${qtd} entregas | ${fmt(peso)} de peso</span>${acoes}`;
     box.appendChild(d);
 
     const itensBox=document.createElement('div');
@@ -389,7 +470,7 @@ function desenharGrupos(){
         const item=document.createElement('div');
         item.className='itemGrupo';
         const k=chave(p);
-        item.innerHTML=`<span><b>${p.seq}</b> - ${p.fantasia || p.cliente}<br><small>${p.cliente} | Peso: ${fmt(pesoNum(p.peso))}</small></span><button class="sec" data-remover-grupo="${gi}" data-chave="${encodeURIComponent(k)}">Remover</button>`;
+        item.innerHTML=`<span><b>${p.seq}</b> - ${p.fantasia || p.cliente}<br><small>${p.cliente} | Peso: ${fmt(pesoNum(p.peso))}</small></span>${modoVisualizacao?'':`<button class="sec" data-remover-grupo="${gi}" data-chave="${encodeURIComponent(k)}">Remover</button>`}`;
         itensBox.appendChild(item);
       });
     }
@@ -486,10 +567,11 @@ function atualizarSelectRotas(){
   }
 }
 
-document.getElementById('todas').onclick=()=>{selecionados=new Set(pontos.map((_,i)=>i));atualizar()};
-document.getElementById('area').onclick=ativarModoArea;
-document.getElementById('limpar').onclick=()=>{selecionados.clear();atualizar()};
+document.getElementById('todas').onclick=()=>{if(modoVisualizacao)return; selecionados=new Set(pontos.map((_,i)=>i));atualizar()};
+document.getElementById('area').onclick=()=>{if(!modoVisualizacao)ativarModoArea()};
+document.getElementById('limpar').onclick=()=>{if(modoVisualizacao)return;selecionados.clear();atualizar()};
 document.getElementById('salvarGrupo').onclick=()=>{
+  if(modoVisualizacao)return;
   const nome=document.getElementById('nomeGrupo').value.trim();
   if(!nome)return alert('Selecione a placa do veículo para salvar a rota.');
   if(!selecionados.size)return alert('Selecione pelo menos um cliente.');
@@ -701,6 +783,14 @@ document.getElementById('file').addEventListener('change',async e=>{
   const f=e.target.files[0]; if(!f)return;
   try{
     const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
+    workbookAtual=wb;
+    nomeArquivoAtual=f.name||'roteirizacao.xlsx';
+    aplicarModoVisualizacao(false);
+    const tinhaRotasSalvas=restaurarRotasDaPlanilha(wb);
+    if(tinhaRotasSalvas){
+      const somenteVer=confirm('Roteirização salva encontrada neste arquivo.\n\nOK = abrir somente para VISUALIZAÇÃO\nCancelar = restaurar e CONTINUAR EDITANDO');
+      aplicarModoVisualizacao(somenteVer);
+    }
     const sn=wb.SheetNames.find(n=>n.trim().toUpperCase()==='ROTA');
     if(!sn)throw new Error('Aba ROTA não encontrada.');
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:null});
@@ -803,10 +893,12 @@ document.getElementById('file').addEventListener('change',async e=>{
         `<a target="_blank" href="${url}">Abrir no Google Maps</a>`+
         popupMesmoLocal(p)
       );
-      m.on('click',()=>{selecionados.has(i)?selecionados.delete(i):selecionados.add(i);atualizar()});
+      m.on('click',()=>{if(modoVisualizacao)return;selecionados.has(i)?selecionados.delete(i):selecionados.add(i);atualizar()});
     });
     map.fitBounds(L.latLngBounds(pontos.map(p=>[p.mapLat,p.mapLon])).pad(.12));
-    document.getElementById('status').innerHTML=`<b>${pontos.length} entregas carregadas.</b><br>Pesos carregados da coluna PESO. Crie grupos clicando nos clientes.`;
+    if(!modoVisualizacao){
+      document.getElementById('status').innerHTML=`<b>${pontos.length} entregas carregadas.</b><br>Pesos carregados da coluna PESO. Crie grupos clicando nos clientes.`;
+    }
     atualizar();
   }catch(err){document.getElementById('status').textContent='Erro: '+err.message}
 });
