@@ -92,6 +92,15 @@ margin-bottom:8px
   .brandTitle h3{font-size:17px}
 }
 
+.tooltipPlaca{
+  background:#fff!important;
+  color:#222!important;
+  border:1px solid #bbb!important;
+  border-radius:6px!important;
+  box-shadow:0 2px 7px #0003!important;
+  font-weight:bold!important;
+  padding:5px 8px!important;
+}
 </style>
 </head>
 <body>
@@ -274,6 +283,31 @@ function chave(p){return `${p.cliente}|${p.lat}|${p.lon}`}
 function grupoDe(p){const k=chave(p); return grupos.find(g=>g.itens.includes(k))||null}
 function corPonto(p,i){if(selecionados.has(i))return '#148a2a'; const g=grupoDe(p); return g?g.cor:'#c00000'}
 function icone(p,i){return L.divIcon({className:'',html:`<div class="num" style="background:${corPonto(p,i)}">${p.seq}</div>`,iconSize:[32,32],iconAnchor:[16,16]})}
+
+/* Mostra a placa da rota ao passar o mouse sobre clientes já roteirizados. */
+function atualizarTooltipPlaca(p){
+  if(!p.marker)return;
+  const g=grupoDe(p);
+
+  if(g && String(g.nome||'').trim()){
+    const texto=`Placa: ${String(g.nome).trim()}`;
+    const tooltipAtual=p.marker.getTooltip();
+
+    if(tooltipAtual){
+      p.marker.setTooltipContent(texto);
+    }else{
+      p.marker.bindTooltip(texto,{
+        permanent:false,
+        direction:'top',
+        offset:[0,-14],
+        opacity:0.95,
+        className:'tooltipPlaca'
+      });
+    }
+  }else if(p.marker.getTooltip()){
+    p.marker.unbindTooltip();
+  }
+}
 function atualizarPreview(total){
   const lista=document.getElementById('previewLista');
   document.getElementById('prevQtd').textContent=selecionados.size;
@@ -299,7 +333,13 @@ function atualizarPreview(total){
 
 function atualizar(){
   let total=0;
-  pontos.forEach((p,i)=>{if(selecionados.has(i))total+=pesoNum(p.peso); if(p.marker)p.marker.setIcon(icone(p,i))});
+  pontos.forEach((p,i)=>{
+    if(selecionados.has(i))total+=pesoNum(p.peso);
+    if(p.marker){
+      p.marker.setIcon(icone(p,i));
+      atualizarTooltipPlaca(p);
+    }
+  });
   document.getElementById('qtd').textContent=selecionados.size;
   document.getElementById('peso').textContent=fmt(total);
   atualizarPreview(total);
@@ -742,6 +782,7 @@ document.getElementById('file').addEventListener('change',async e=>{
       const url=/^https?:\/\//i.test(p.link)?p.link:`https://www.google.com/maps?q=${p.lat},${p.lon}`;
       const m=L.marker([p.mapLat,p.mapLon],{icon:icone(p,i)}).addTo(layer);
       p.marker=m;
+      atualizarTooltipPlaca(p);
       m.bindPopup(
         `<b>Parada ${p.seq}</b><br>`+
         `<b>Cliente:</b> ${p.cliente}<br>`+
