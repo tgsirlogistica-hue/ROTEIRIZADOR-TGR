@@ -13,6 +13,16 @@ button{border:0;border-radius:7px;padding:9px 11px;font-weight:bold;cursor:point
 button.sec{background:#555}.small{font-size:12px;color:#555;margin-top:8px;line-height:1.4}
 .box{margin-top:11px;padding:10px;border:1px solid #ddd;border-radius:9px;background:#fafafa}
 .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.row input,.row select{flex:1;min-width:0;padding:8px;border:1px solid #bbb;border-radius:6px;background:#fff}.row select option.placaUsada{color:#888;background:#eee}
+.row select option.placaIndisponivel{color:#a40000;background:#f3f3f3}
+.modalPlacasFundo{position:fixed;inset:0;z-index:5000;background:#0008;display:none;align-items:center;justify-content:center;padding:18px;box-sizing:border-box}
+.modalPlacas{width:min(430px,100%);max-height:80vh;overflow:auto;background:#fff;border-radius:12px;padding:18px;box-shadow:0 8px 30px #0005}
+.modalPlacas h3{margin:0 0 6px;color:#c00000}
+.modalPlacas .subModal{font-size:12px;color:#555;margin-bottom:12px;line-height:1.4}
+.listaPlacasIndisponiveis{border:1px solid #ddd;border-radius:8px;background:#fafafa;padding:6px 10px;max-height:45vh;overflow:auto}
+.itemPlacaIndisponivel{display:flex;align-items:center;gap:9px;padding:9px 4px;border-bottom:1px solid #e7e7e7;font-size:13px}
+.itemPlacaIndisponivel:last-child{border-bottom:0}
+.itemPlacaIndisponivel input{width:17px;height:17px}
+.modalPlacasAcoes{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 .num{color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;box-shadow:0 1px 5px #0008}
 .grupo{
 display:grid;
@@ -162,6 +172,19 @@ O CSV será gerado com: Código do cliente, VD, SV, Número do pedido, Peso, Rot
   <div id="previewLista" class="previewVazio">Nenhum item selecionado.</div>
 </div>
 
+
+<div id="modalPlacasIndisponiveis" class="modalPlacasFundo" aria-hidden="true">
+  <div class="modalPlacas">
+    <h3>PLACAS INDISPONÍVEIS</h3>
+    <div class="subModal">Marque as placas que <b>não poderão ser usadas hoje</b>. Elas continuarão visíveis na lista, mas ficarão bloqueadas para criação de rota.</div>
+    <div id="listaPlacasIndisponiveis" class="listaPlacasIndisponiveis"></div>
+    <div class="modalPlacasAcoes">
+      <button id="cancelarPlacasIndisponiveis" class="sec" type="button">CANCELAR</button>
+      <button id="salvarPlacasIndisponiveis" type="button">SALVAR</button>
+    </div>
+  </div>
+</div>
+
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -179,6 +202,12 @@ let selecionados=new Set();
 let grupos=[];
 let indiceEquipes=new Map();
 let placasDisponiveis=[];
+let placasIndisponiveis=new Set();
+try{
+  placasIndisponiveis=new Set(JSON.parse(localStorage.getItem('placasIndisponiveisRotaV1')||'[]'));
+}catch(e){
+  placasIndisponiveis=new Set();
+}
 let workbookAtual=null;
 let nomeArquivoAtual='roteirizacao.xlsx';
 let modoVisualizacao=false;
@@ -554,19 +583,108 @@ function atualizarSelectRotas(){
 
   select.innerHTML='<option value="">Selecione a placa do veículo...</option>';
 
+  const gerenciar=document.createElement('option');
+  gerenciar.value='__GERENCIAR_INDISPONIVEIS__';
+  gerenciar.textContent='⚙ DEFINIR PLACAS INDISPONÍVEIS...';
+  select.appendChild(gerenciar);
+
   placasDisponiveis.forEach(placa=>{
     const option=document.createElement('option');
     option.value=placa;
-    const usada=usadas.has(placa.toUpperCase());
-    option.textContent=usada ? `${placa} — já utilizada` : placa;
-    if(usada) option.classList.add('placaUsada');
+    const chavePlaca=placa.toUpperCase();
+    const usada=usadas.has(chavePlaca);
+    const indisponivel=placasIndisponiveis.has(chavePlaca);
+
+    if(indisponivel){
+      option.textContent=`${placa} — INDISPONÍVEL HOJE`;
+      option.disabled=true;
+      option.classList.add('placaIndisponivel');
+    }else if(usada){
+      option.textContent=`${placa} — já utilizada`;
+      option.classList.add('placaUsada');
+    }else{
+      option.textContent=placa;
+    }
     select.appendChild(option);
   });
 
-  if([...select.options].some(o=>o.value===valorAtual)){
+  if([...select.options].some(o=>o.value===valorAtual && !o.disabled)){
     select.value=valorAtual;
   }
 }
+
+function abrirPlacasIndisponiveis(){
+  const modal=document.getElementById('modalPlacasIndisponiveis');
+  const lista=document.getElementById('listaPlacasIndisponiveis');
+  if(!modal || !lista) return;
+
+  const usadas=new Set(grupos.map(g=>String(g.nome||'').trim().toUpperCase()));
+  lista.innerHTML='';
+
+  if(!placasDisponiveis.length){
+    lista.innerHTML='<div class="small">Importe primeiro uma planilha contendo a aba PLACAS E EQUIPE.</div>';
+  }else{
+    placasDisponiveis.forEach(placa=>{
+      const chavePlaca=placa.toUpperCase();
+      const linha=document.createElement('label');
+      linha.className='itemPlacaIndisponivel';
+
+      const check=document.createElement('input');
+      check.type='checkbox';
+      check.value=chavePlaca;
+      check.checked=placasIndisponiveis.has(chavePlaca);
+
+      // Uma placa que já recebeu rota continua visível, mas não pode ser
+      // bloqueada até que a rota correspondente seja removida.
+      if(usadas.has(chavePlaca) && !check.checked){
+        check.disabled=true;
+        check.title='Esta placa já possui uma rota salva.';
+      }
+
+      const texto=document.createElement('span');
+      texto.innerHTML=`<b>${placa}</b>${usadas.has(chavePlaca)?' — rota já definida':''}`;
+
+      linha.appendChild(check);
+      linha.appendChild(texto);
+      lista.appendChild(linha);
+    });
+  }
+
+  modal.style.display='flex';
+  modal.setAttribute('aria-hidden','false');
+}
+
+function fecharPlacasIndisponiveis(){
+  const modal=document.getElementById('modalPlacasIndisponiveis');
+  if(modal){
+    modal.style.display='none';
+    modal.setAttribute('aria-hidden','true');
+  }
+}
+
+document.getElementById('nomeGrupo').addEventListener('change',function(){
+  if(this.value==='__GERENCIAR_INDISPONIVEIS__'){
+    this.value='';
+    abrirPlacasIndisponiveis();
+  }
+});
+
+document.getElementById('cancelarPlacasIndisponiveis').onclick=fecharPlacasIndisponiveis;
+
+document.getElementById('salvarPlacasIndisponiveis').onclick=()=>{
+  const marcadas=[...document.querySelectorAll('#listaPlacasIndisponiveis input[type="checkbox"]:checked')]
+    .map(el=>String(el.value).toUpperCase());
+
+  placasIndisponiveis=new Set(marcadas);
+  localStorage.setItem('placasIndisponiveisRotaV1',JSON.stringify([...placasIndisponiveis]));
+  fecharPlacasIndisponiveis();
+  atualizarSelectRotas();
+
+  const qtd=placasIndisponiveis.size;
+  document.getElementById('status').innerHTML=qtd
+    ? `<b>${qtd} placa${qtd===1?'':'s'} marcada${qtd===1?'':'s'} como indisponível${qtd===1?'':'is'} hoje.</b>`
+    : '<b>Todas as placas estão disponíveis.</b>';
+};
 
 document.getElementById('todas').onclick=()=>{if(modoVisualizacao)return; selecionados=new Set(pontos.map((_,i)=>i));atualizar()};
 document.getElementById('area').onclick=()=>{if(!modoVisualizacao)ativarModoArea()};
@@ -575,6 +693,7 @@ document.getElementById('salvarGrupo').onclick=()=>{
   if(modoVisualizacao)return;
   const nome=document.getElementById('nomeGrupo').value.trim();
   if(!nome)return alert('Selecione a placa do veículo para salvar a rota.');
+  if(placasIndisponiveis.has(nome.toUpperCase()))return alert('Esta placa está marcada como indisponível hoje. Se necessário, altere a disponibilidade na lista de placas.');
   if(!selecionados.size)return alert('Selecione pelo menos um cliente.');
   const itens=[...selecionados].map(i=>chave(pontos[i]));
   grupos.forEach(g=>g.itens=g.itens.filter(k=>!itens.includes(k)));
@@ -920,6 +1039,7 @@ document.addEventListener('DOMContentLoaded', function(){
     if(!confirmar) return;
 
       localStorage.removeItem('gruposRotaV1');
+      localStorage.removeItem('placasIndisponiveisRotaV1');
 
     // Limpa também os estados em memória mais comuns desta aplicação.
     try {
