@@ -142,6 +142,28 @@ margin-bottom:8px
   .ferramentaBtn{width:40px;height:40px}
 }
 
+
+/* Botões superiores mais compactos e estáveis */
+#arquivo + label, label[for="arquivo"], #zerarRoteirizacaoBtn{
+  font-size:12px !important;
+  padding:8px 11px !important;
+  min-height:34px !important;
+  line-height:18px !important;
+  white-space:nowrap !important;
+  box-sizing:border-box !important;
+}
+#zerarRoteirizacaoBtn{
+  margin-left:5px !important;
+}
+/* A linha que contém Selecionar Planilha e Zerar Roteirização não quebra. */
+#zerarRoteirizacaoBtn{
+  flex-shrink:1 !important;
+}
+
+
+.linhaBotoesArquivo > *{margin-top:0!important;margin-bottom:0!important}
+.linhaBotoesArquivo label[for]{flex:0 1 auto}
+.linhaBotoesArquivo #zerarRoteirizacaoBtn{flex:0 1 auto}
 </style>
 </head>
 <body>
