@@ -164,6 +164,13 @@ margin-bottom:8px
 .linhaBotoesArquivo > *{margin-top:0!important;margin-bottom:0!important}
 .linhaBotoesArquivo label[for]{flex:0 1 auto}
 .linhaBotoesArquivo #zerarRoteirizacaoBtn{flex:0 1 auto}
+
+.motoristaRota{
+  display:inline-block;
+  font-size:12px;
+  color:#333;
+  margin-bottom:1px;
+}
 </style>
 </head>
 <body>
@@ -445,10 +452,15 @@ function aplicarModoVisualizacao(ativo){
 }
 
 function dadosRotasParaPlanilha(){
-  const linhas=[['TIPO','PLACA','COR','CHAVE_ITEM','DATA_SALVAMENTO']];
+  const linhas=[['TIPO','PLACA','COR','CHAVE_ITEM','DATA_SALVAMENTO','MOTORISTA']];
   const agora=new Date().toISOString();
   grupos.forEach(g=>{
-    (g.itens||[]).forEach(k=>linhas.push(['ROTA',String(g.nome||''),String(g.cor||''),String(k||''),agora]));
+    const motorista=String(
+      g.motorista ||
+      (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
+      ''
+    );
+    (g.itens||[]).forEach(k=>linhas.push(['ROTA',String(g.nome||''),String(g.cor||''),String(k||''),agora,motorista]));
   });
   return linhas;
 }
@@ -464,8 +476,9 @@ function restaurarRotasDaPlanilha(wb){
     const placa=String(r[1]||'').trim();
     const cor=String(r[2]||'').trim()||proximaCor();
     const item=String(r[3]||'').trim();
+    const motorista=String(r[5]||'').trim();
     if(!placa || !item) return;
-    if(!mapa.has(placa)) mapa.set(placa,{nome:placa,cor,itens:[]});
+    if(!mapa.has(placa)) mapa.set(placa,{nome:placa,motorista,cor,itens:[]});
     if(!mapa.get(placa).itens.includes(item)) mapa.get(placa).itens.push(item);
   });
   const restaurados=[...mapa.values()];
@@ -545,7 +558,15 @@ function desenharGrupos(){
     const acoes=modoVisualizacao
       ? `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button></div>`
       : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
-    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow"><b>${g.nome}</b> — <b>${cidadesTexto}</b><br>${qtd} entregas | ${fmt(peso)} de peso</span>${acoes}`;
+    const motoristaGrupo=String(
+      g.motorista ||
+      (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
+      ''
+    ).trim();
+    const linhaMotorista=motoristaGrupo
+      ? `<b class="motoristaRota">${motoristaGrupo}</b><br>`
+      : '';
+    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow">${linhaMotorista}<b>${g.nome}</b> — <b>${cidadesTexto}</b><br>${qtd} entregas | ${fmt(peso)} de peso</span>${acoes}`;
     box.appendChild(d);
 
     const itensBox=document.createElement('div');
@@ -659,15 +680,19 @@ function atualizarSelectRotas(){
     const usada=usadas.has(chavePlaca);
     const indisponivel=placasIndisponiveis.has(chavePlaca);
 
+    const equipe=indiceEquipes.get(chavePlaca)||{};
+    const motorista=String(equipe.motorista||'').trim();
+    const placaMotorista=motorista ? `${placa} — ${motorista}` : placa;
+
     if(indisponivel){
-      option.textContent=`${placa} — INDISPONÍVEL HOJE`;
+      option.textContent=`${placaMotorista} — INDISPONÍVEL HOJE`;
       option.disabled=true;
       option.classList.add('placaIndisponivel');
     }else if(usada){
-      option.textContent=`${placa} — já utilizada`;
+      option.textContent=`${placaMotorista} — já utilizada`;
       option.classList.add('placaUsada');
     }else{
-      option.textContent=placa;
+      option.textContent=placaMotorista;
     }
     select.appendChild(option);
   });
@@ -762,7 +787,8 @@ document.getElementById('salvarGrupo').onclick=()=>{
   const itens=[...selecionados].map(i=>chave(pontos[i]));
   grupos.forEach(g=>g.itens=g.itens.filter(k=>!itens.includes(k)));
   grupos=grupos.filter(g=>g.itens.length);
-  grupos.push({nome,cor:proximaCor(),itens});
+  const motorista=(indiceEquipes.get(nome.toUpperCase())||{}).motorista || '';
+  grupos.push({nome,motorista,cor:proximaCor(),itens});
   document.getElementById('nomeGrupo').value='';
   selecionados.clear(); salvarLocal(); atualizar();
   atualizarSelectRotas();
