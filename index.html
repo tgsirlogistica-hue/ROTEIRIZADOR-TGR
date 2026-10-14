@@ -289,28 +289,28 @@ let modoVisualizacao=false;
 const cores=[
   '#0047AB', // azul cobalto
   '#00A8E8', // azul céu forte
-  '#008080', // teal
-  '#00A86B', // verde jade
-  '#2E7D32', // verde floresta
-  '#76A900', // verde lima escuro
-  '#827717', // oliva
-  '#C7A600', // dourado escuro
-  '#E67E00', // laranja
-  '#A65E00', // âmbar marrom
-  '#6D4C41', // marrom
-  '#4E342E', // café
   '#4527A0', // roxo profundo
   '#6A1B9A', // púrpura
   '#8E44AD', // violeta
   '#3F51B5', // índigo
   '#1565C0', // azul royal
   '#006064', // ciano escuro
-  '#1B5E20', // verde profundo
-  '#558B2F', // verde musgo
+  '#6D4C41', // marrom
+  '#4E342E', // café
   '#795548', // marrom médio
   '#455A64', // azul acinzentado
   '#263238', // grafite
-  '#000000'  // preto
+  '#000000', // preto
+  '#3949AB', // azul índigo
+  '#7B1FA2', // roxo
+  '#5E35B1', // violeta profundo
+  '#0277BD', // azul petróleo
+  '#283593', // azul escuro
+  '#AD1457', // magenta
+  '#880E4F', // vinho
+  '#5D4037', // marrom escuro
+  '#37474F', // cinza azulado
+  '#546E7A'  // cinza ardósia
 ];
 let modoArea=false;
 let modoPoligono=false;
@@ -331,7 +331,7 @@ function proximaCor(){
   // Só entra aqui se houver mais rotas salvas do que cores da paleta.
   // Gera novas cores afastadas entre si e evita a faixa vermelha.
   const indice=grupos.length-cores.length;
-  const tons=[210,195,180,165,145,125,95,70,45,280,260,240,220,200,175,155,135,110,85,60,35,300];
+  const tons=[210,225,240,255,270,285,300,315,330,200,220,245,265,290,310,335];
   const h=tons[indice%tons.length];
   const ciclo=Math.floor(indice/tons.length);
   const l=[36,48,28,56][ciclo%4];
