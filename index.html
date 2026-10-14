@@ -187,7 +187,7 @@ margin-bottom:8px
 <input id="file" type="file" accept=".xlsx,.xls" hidden>
 <button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
 <button id="zerarRoteirizacaoBtn" type="button" style="background:#555;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;margin-left:6px">ZERAR ROTEIRIZAÇÃO</button>
-<div class="box somenteEdicao" style="font-size:12px"><label for="dataEntregaRota"><b>DATA DA ENTREGA</b></label> <input id="dataEntregaRota" type="date" value="2026-10-14" style="padding:6px;border:1px solid #bbb;border-radius:5px;margin:5px 0"><div id="farolForaRota" style="font-weight:bold;color:#b45309">Carregue a planilha para analisar a programação.</div><div style="color:#777;margin-top:4px">Laranja = cidade sem entrega prevista nesta data. A análise dos ciclos de venda ainda requer validação.</div></div><div id="status" class="small">Selecione o Excel. Aba usada: <b>ROTA</b>.</div>
+<div id="status" class="small">Selecione o Excel. Aba usada: <b>ROTA</b>.</div>
 
 <div class="box somenteEdicao">
 <div><b>Selecionadas:</b> <span id="qtd">0</span></div>
@@ -278,8 +278,6 @@ try{
   placasIndisponiveis=new Set();
 }
 let workbookAtual=null;
-let calendarioEntregas=new Map();
-let diagnosticoRota={fora:0,semCalendario:0,dentro:0};
 let nomeArquivoAtual='roteirizacao.xlsx';
 let modoVisualizacao=false;
 const cores=[
@@ -392,7 +390,7 @@ function pesoNum(v){
 function fmt(n){return Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function chave(p){return `${p.cliente}|${p.lat}|${p.lon}`}
 function grupoDe(p){const k=chave(p); return grupos.find(g=>g.itens.includes(k))||null}
-function corPonto(p,i){if(selecionados.has(i))return '#148a2a'; const g=grupoDe(p); return g?g.cor:(p.foraDeRota?'#e67e00':'#c00000')}
+function corPonto(p,i){if(selecionados.has(i))return '#148a2a'; const g=grupoDe(p); return g?g.cor:'#c00000'}
 function icone(p,i){return L.divIcon({className:'',html:`<div class="num" style="background:${corPonto(p,i)}">${p.seq}</div>`,iconSize:[32,32],iconAnchor:[16,16]})}
 
 /* Mostra a placa da rota ao passar o mouse sobre clientes já roteirizados. */
@@ -1171,33 +1169,6 @@ document.getElementById('file').addEventListener('change',async e=>{
       }
     });
 
-    // Diagnóstico conservador: somente a incompatibilidade com o calendário de
-    // entrega da cidade gera marcador laranja. Não presumimos ciclos quinzenais.
-    const abaCalendario=wb.SheetNames.find(n=>n.trim().toUpperCase().includes('DIAS DE VENDAS E ENTEGA'));
-    calendarioEntregas=new Map();
-    const normalizarCidade=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'').trim();
-    if(abaCalendario){
-      const tabela=XLSX.utils.sheet_to_json(wb.Sheets[abaCalendario],{header:1,defval:''});
-      tabela.slice(2).forEach(r=>{
-        const cidade=normalizarCidade(r[9]);if(!cidade)return;
-        const dias=calendarioEntregas.get(cidade)||new Set();
-        for(let i=10;i<=14;i++)if(String(r[i]||'').trim().toUpperCase()==='ROTA')dias.add(i-9);
-        calendarioEntregas.set(cidade,dias);
-      });
-    }
-    const campoData=document.getElementById('dataEntregaRota');
-    const dataEntrega=campoData&&campoData.value;
-    const diaEntrega=dataEntrega?new Date(dataEntrega+'T12:00:00').getDay():null;
-    const avaliarCidade=cidade=>{
-      const key=normalizarCidade(cidade);
-      const dias=calendarioEntregas.get(key);
-      if(!dias)return 'verificar';
-      // Sábado: somente Irecê, conforme a regra operacional informada.
-      if(diaEntrega===6)return key==='IRECE'?'dentro':'fora';
-      if(diaEntrega===0)return 'verificar';
-      return dias.has(diaEntrega)?'dentro':'fora';
-    };
-
     // ALERTA: identifica entregas/clientes da aba ROTA que estão sem coordenadas válidas.
     const clientesSemCoordenadas=[...new Set(
       rows
@@ -1231,14 +1202,9 @@ document.getElementById('file').addEventListener('change',async e=>{
       link:String(r['LINK MAPS']??''),
       vd:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).vd || '',
       sv:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).sv || '',
-      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || '',
-      situacaoProgramacao:avaliarCidade((indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade),
-      foraDeRota:avaliarCidade((indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade)==='fora'
+      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || ''
     })).filter(p=>Number.isFinite(p.seq)&&p.seq>0&&p.cliente.trim()!==''&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0).sort((a,b)=>a.seq-b.seq);
 
-    diagnosticoRota={fora:pontos.filter(p=>p.situacaoProgramacao==='fora').length,semCalendario:pontos.filter(p=>p.situacaoProgramacao==='verificar').length,dentro:pontos.filter(p=>p.situacaoProgramacao==='dentro').length};
-    const farol=document.getElementById('farolForaRota');
-    if(farol)farol.textContent=`Fora da programação: ${diagnosticoRota.fora} | Dentro: ${diagnosticoRota.dentro} | Verificar: ${diagnosticoRota.semCalendario}`;
     pontos=ajustarPontosSobrepostos(pontos);
 
     if(!pontos.length)throw new Error('Nenhum ponto válido encontrado.');
@@ -1260,7 +1226,7 @@ document.getElementById('file').addEventListener('change',async e=>{
     });
     map.fitBounds(L.latLngBounds(pontos.map(p=>[p.mapLat,p.mapLon])).pad(.12));
     if(!modoVisualizacao){
-      document.getElementById('status').innerHTML=`<b>${pontos.length} entregas carregadas.</b><br>Marcadores laranja: cidades fora do calendário da data escolhida. Crie grupos clicando nos clientes.`;
+      document.getElementById('status').innerHTML=`<b>${pontos.length} entregas carregadas.</b><br>Pesos carregados da coluna PESO. Crie grupos clicando nos clientes.`;
     }
     atualizar();
   }catch(err){document.getElementById('status').textContent='Erro: '+err.message}
