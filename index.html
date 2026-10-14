@@ -187,6 +187,7 @@ margin-bottom:8px
 <input id="file" type="file" accept=".xlsx,.xls" hidden>
 <button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
 <button id="zerarRoteirizacaoBtn" type="button" style="background:#555;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;margin-left:6px">ZERAR ROTEIRIZAÇÃO</button>
+<div class="row" style="align-items:center;margin-top:9px"><label for="dataEntregaRota" style="font-size:12px;font-weight:bold;white-space:nowrap">DATA DA ENTREGA</label><input id="dataEntregaRota" type="date" value="2026-10-14" style="max-width:175px" aria-label="Data da entrega"></div>
 <div id="status" class="small">Selecione o Excel. Aba usada: <b>ROTA</b>.</div>
 
 <div class="box somenteEdicao">
@@ -267,6 +268,11 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
 
 let layer=L.layerGroup().addTo(map);
 let pontos=[];
+const diasEntregaSemana=["DOMINGO","SEGUNDA-FEIRA","TERÇA-FEIRA","QUARTA-FEIRA","QUINTA-FEIRA","SEXTA-FEIRA","SÁBADO"];
+function normalizarDiaEntrega(valor){return String(valor??"").trim().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();}
+function diaEntregaSelecionado(){const valor=document.getElementById("dataEntregaRota").value;if(!valor)return "";const [ano,mes,dia]=valor.split("-").map(Number);return normalizarDiaEntrega(diasEntregaSemana[new Date(ano,mes-1,dia).getDay()]);}
+function foraDaProgramacao(p){const dia=diaEntregaSelecionado();return Boolean(dia&&p.diaEntrega&&p.diaEntrega!==dia);}
+document.getElementById("dataEntregaRota").addEventListener("change",()=>atualizar());
 let selecionados=new Set();
 let grupos=[];
 let indiceEquipes=new Map();
@@ -390,7 +396,7 @@ function pesoNum(v){
 function fmt(n){return Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function chave(p){return `${p.cliente}|${p.lat}|${p.lon}`}
 function grupoDe(p){const k=chave(p); return grupos.find(g=>g.itens.includes(k))||null}
-function corPonto(p,i){if(selecionados.has(i))return '#148a2a'; const g=grupoDe(p); return g?g.cor:'#c00000'}
+function corPonto(p,i){if(selecionados.has(i))return '#148a2a'; const g=grupoDe(p); return g?g.cor:(foraDaProgramacao(p)?'#e67e22':'#c00000')}
 function icone(p,i){return L.divIcon({className:'',html:`<div class="num" style="background:${corPonto(p,i)}">${p.seq}</div>`,iconSize:[32,32],iconAnchor:[16,16]})}
 
 /* Mostra a placa da rota ao passar o mouse sobre clientes já roteirizados. */
@@ -1164,7 +1170,8 @@ document.getElementById('file').addEventListener('change',async e=>{
         indiceClientes.set(codigo,{
           vd:String(r.Vd ?? r.VD ?? '').trim(),
           sv:String(r.Sv ?? r.SV ?? '').trim(),
-          cidade:String(r.Cidade ?? r.CIDADE ?? '').trim()
+          cidade:String(r.Cidade ?? r.CIDADE ?? '').trim(),
+          diaEntrega:normalizarDiaEntrega(r['DIA DE ENTREGA '] ?? r['DIA DE ENTREGA'] ?? '')
         });
       }
     });
@@ -1202,7 +1209,8 @@ document.getElementById('file').addEventListener('change',async e=>{
       link:String(r['LINK MAPS']??''),
       vd:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).vd || '',
       sv:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).sv || '',
-      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || ''
+      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || '',
+      diaEntrega:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).diaEntrega || ''
     })).filter(p=>Number.isFinite(p.seq)&&p.seq>0&&p.cliente.trim()!==''&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0).sort((a,b)=>a.seq-b.seq);
 
     pontos=ajustarPontosSobrepostos(pontos);
