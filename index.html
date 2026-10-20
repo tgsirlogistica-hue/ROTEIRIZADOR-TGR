@@ -206,12 +206,11 @@ margin-bottom:8px
 <div class="tituloRotas">ROTAS SALVAS</div>
 <div id="grupos" class="small">Nenhum grupo salvo.</div>
 <div class="row">
-<button id="salvarRoteirizacao" type="button">SALVAR ROTEIRIZAÇÃO</button>
-<button id="gerarCsv" type="button">GERAR RELATÓRIO CSV</button>
+<button id="gerarCsv" type="button">BAIXAR RELATÓRIOS (ZIP)</button>
 </div>
 <div id="modoHistorico" class="small" style="display:none;margin-top:8px"><b>Modo visualização:</b> esta roteirização foi restaurada do arquivo salvo. Zoom, mapa, placas, cidades e informações dos clientes continuam disponíveis.</div>
 <div class="small">
-O CSV será gerado com: Código do cliente, VD, SV, Número do pedido, Peso, Rota, Motorista, Cidade, Latitude, Longitude, Link GPS e Status do pedido. Pedidos sem rota serão listados ao final como Não roteirizado.
+O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da rota é o dia seguinte quando o download ocorrer a partir das 18h. O CSV será gerado com: Código do cliente, VD, SV, Número do pedido, Peso, Rota, Motorista, Cidade, Latitude, Longitude, Link GPS e Status do pedido. Pedidos sem rota serão listados ao final como Não roteirizado.
 </div>
 </div>
 </div>
@@ -257,6 +256,7 @@ O CSV será gerado com: Código do cliente, VD, SV, Número do pedido, Peso, Rot
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
 const map=L.map('map').setView([-11.30,-41.85],13);
 // Endereço oficial do OpenStreetMap para uso em página web publicada.
@@ -488,33 +488,36 @@ function restaurarRotasDaPlanilha(wb){
   return true;
 }
 
-function salvarRoteirizacaoNoExcel(){
-  if(!workbookAtual){alert('Selecione a planilha antes de salvar a roteirização.');return;}
-  if(!grupos.length){alert('Crie pelo menos uma rota antes de salvar.');return;}
-
-  const wb=workbookAtual;
+function prepararExcelRotasSalvas(){
+  if(!workbookAtual) throw new Error('Selecione a planilha antes de salvar a roteirização.');
+  if(!grupos.length) throw new Error('Crie pelo menos uma rota antes de salvar.');
+  // Cria uma cópia do arquivo carregado, sem alterar o workbook que está em uso.
+  const wb=XLSX.read(XLSX.write(workbookAtual,{bookType:'xlsx',type:'array'}),{type:'array'});
   const antigo=wb.SheetNames.find(n=>n.trim().toUpperCase()==='ROTAS_SALVAS');
   if(antigo){
     delete wb.Sheets[antigo];
     wb.SheetNames=wb.SheetNames.filter(n=>n!==antigo);
   }
-  const ws=XLSX.utils.aoa_to_sheet(dadosRotasParaPlanilha());
-  XLSX.utils.book_append_sheet(wb,ws,'ROTAS_SALVAS');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dadosRotasParaPlanilha()),'ROTAS_SALVAS');
   wb.Workbook=wb.Workbook||{};
   wb.Workbook.Sheets=wb.Workbook.Sheets||[];
   const idx=wb.SheetNames.indexOf('ROTAS_SALVAS');
   while(wb.Workbook.Sheets.length<wb.SheetNames.length) wb.Workbook.Sheets.push({});
   wb.Workbook.Sheets[idx]=wb.Workbook.Sheets[idx]||{};
   wb.Workbook.Sheets[idx].Hidden=1;
-
-  const base=(nomeArquivoAtual||'roteirizacao.xlsx').replace(/\.xlsx?$/i,'');
-  const agora=new Date(); const pad=n=>String(n).padStart(2,'0');
-  const nome=`${base}_ROTAS_SALVAS_${agora.getFullYear()}-${pad(agora.getMonth()+1)}-${pad(agora.getDate())}.xlsx`;
-  XLSX.writeFile(wb,nome);
-  document.getElementById('status').innerHTML=`<b>Roteirização salva.</b><br>Arquivo gerado: ${nome}. Ao abrir esse Excel novamente neste Roteirizador, as rotas poderão ser restauradas.`;
+  return XLSX.write(wb,{bookType:'xlsx',type:'array'});
 }
 
-document.getElementById('salvarRoteirizacao').addEventListener('click',salvarRoteirizacaoNoExcel);
+function informacoesDataRota(){
+  const agora=new Date();
+  const dataRota=new Date(agora.getFullYear(),agora.getMonth(),agora.getDate());
+  dataRota.setDate(dataRota.getDate()+1);
+  const pad=n=>String(n).padStart(2,'0');
+  const data=`${dataRota.getFullYear()}-${pad(dataRota.getMonth()+1)}-${pad(dataRota.getDate())}`;
+  const dia=['DOM','SEG','TER','QUA','QUI','SEX','SAB'][dataRota.getDay()];
+  const hora=`${pad(agora.getHours())}-${pad(agora.getMinutes())}`;
+  return {data,dia,hora};
+}
 
 function atualizar(){
   let total=0;
@@ -962,7 +965,7 @@ function pedidoTresDigitos(v){
   return /^\d+$/.test(s) ? s.padStart(3,'0') : s;
 }
 
-function gerarRelatorioCsv(){
+function montarRelatorioCsv(){
   if(!pontos.length){
     alert('Carregue a planilha antes de gerar o relatório.');
     return;
@@ -1041,25 +1044,46 @@ function gerarRelatorioCsv(){
     .map(l=>l.map(csvEscape).join(';'))
     .join('\r\n');
 
-  const blob=new Blob([csv],{
-    type:'text/csv;charset=utf-8;'
-  });
+  return csv;
 
-  const agora=new Date();
-  const pad=n=>String(n).padStart(2,'0');
-  const nome=
-    `relatorio_rotas_${agora.getFullYear()}-${pad(agora.getMonth()+1)}-${pad(agora.getDate())}_${pad(agora.getHours())}-${pad(agora.getMinutes())}.csv`;
-
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=nome;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
-document.getElementById('gerarCsv').addEventListener('click',gerarRelatorioCsv);
+async function baixarRelatoriosZip(){
+  const botao=document.getElementById('gerarCsv');
+  if(!workbookAtual || !pontos.length){alert('Selecione a planilha antes de baixar os relatórios.');return;}
+  if(!grupos.length){alert('Crie pelo menos uma rota antes de baixar os relatórios.');return;}
+  if(typeof JSZip==='undefined'){alert('Não foi possível carregar o gerador ZIP. Verifique a conexão com a internet e tente novamente.');return;}
+  botao.disabled=true;
+  const textoOriginal=botao.textContent;
+  botao.textContent='PREPARANDO ZIP...';
+  try{
+    const {data,dia,hora}=informacoesDataRota();
+    const csv=montarRelatorioCsv();
+    const excel=prepararExcelRotasSalvas();
+    const nomeCsv=`relatorio_rotas_${data}_${hora} ${dia}.csv`;
+    const nomeExcel=`roteirizacao_mapa_ROTAS_SALVAS_${data} ${dia}.xlsx`;
+    const zip=new JSZip();
+    zip.file(nomeCsv,csv);
+    zip.file(nomeExcel,excel);
+    const arquivo=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+    const url=URL.createObjectURL(arquivo);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`RELATORIOS_TGR_${data} ${dia}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+    document.getElementById('status').innerHTML=`<b>Relatórios gerados para ${data} (${dia}).</b><br>ZIP com ${nomeCsv} e ${nomeExcel}.`;
+  }catch(erro){
+    console.error(erro);
+    alert('Erro ao gerar os relatórios: '+(erro.message||erro));
+  }finally{
+    botao.disabled=false;
+    botao.textContent=textoOriginal;
+  }
+}
+document.getElementById('gerarCsv').addEventListener('click',baixarRelatoriosZip);
 
 
 function ajustarPontosSobrepostos(lista){
