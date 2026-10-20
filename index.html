@@ -187,7 +187,6 @@ margin-bottom:8px
 <input id="file" type="file" accept=".xlsx,.xls" hidden>
 <button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
 <button id="zerarRoteirizacaoBtn" type="button" style="background:#555;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;margin-left:6px">ZERAR ROTEIRIZAÇÃO</button>
-<div class="row" style="align-items:center;margin-top:9px"><label for="dataEntregaRota" style="font-size:12px;font-weight:bold;white-space:nowrap">DATA DA ENTREGA</label><input id="dataEntregaRota" type="date" value="2026-10-14" style="max-width:175px" aria-label="Data da entrega"></div>
 <div id="status" class="small">Selecione o Excel. Aba usada: <b>ROTA</b>.</div>
 
 <div class="box somenteEdicao">
@@ -268,11 +267,6 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
 
 let layer=L.layerGroup().addTo(map);
 let pontos=[];
-const diasEntregaSemana=["DOMINGO","SEGUNDA-FEIRA","TERÇA-FEIRA","QUARTA-FEIRA","QUINTA-FEIRA","SEXTA-FEIRA","SÁBADO"];
-function normalizarDiaEntrega(valor){return String(valor??"").trim().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();}
-function diaEntregaSelecionado(){const valor=document.getElementById("dataEntregaRota").value;if(!valor)return "";const [ano,mes,dia]=valor.split("-").map(Number);return normalizarDiaEntrega(diasEntregaSemana[new Date(ano,mes-1,dia).getDay()]);}
-function foraDaProgramacao(p){const dia=diaEntregaSelecionado();return Boolean(dia&&p.diaEntrega&&p.diaEntrega!==dia);}
-document.getElementById("dataEntregaRota").addEventListener("change",()=>atualizar());
 let selecionados=new Set();
 let grupos=[];
 let indiceEquipes=new Map();
@@ -289,28 +283,28 @@ let modoVisualizacao=false;
 const cores=[
   '#0047AB', // azul cobalto
   '#00A8E8', // azul céu forte
+  '#008080', // teal
+  '#00A86B', // verde jade
+  '#2E7D32', // verde floresta
+  '#76A900', // verde lima escuro
+  '#827717', // oliva
+  '#C7A600', // dourado escuro
+  '#E67E00', // laranja
+  '#A65E00', // âmbar marrom
+  '#6D4C41', // marrom
+  '#4E342E', // café
   '#4527A0', // roxo profundo
   '#6A1B9A', // púrpura
   '#8E44AD', // violeta
   '#3F51B5', // índigo
   '#1565C0', // azul royal
   '#006064', // ciano escuro
-  '#6D4C41', // marrom
-  '#4E342E', // café
+  '#1B5E20', // verde profundo
+  '#558B2F', // verde musgo
   '#795548', // marrom médio
   '#455A64', // azul acinzentado
   '#263238', // grafite
-  '#000000', // preto
-  '#3949AB', // azul índigo
-  '#7B1FA2', // roxo
-  '#5E35B1', // violeta profundo
-  '#0277BD', // azul petróleo
-  '#283593', // azul escuro
-  '#AD1457', // magenta
-  '#880E4F', // vinho
-  '#5D4037', // marrom escuro
-  '#37474F', // cinza azulado
-  '#546E7A'  // cinza ardósia
+  '#000000'  // preto
 ];
 let modoArea=false;
 let modoPoligono=false;
@@ -331,7 +325,7 @@ function proximaCor(){
   // Só entra aqui se houver mais rotas salvas do que cores da paleta.
   // Gera novas cores afastadas entre si e evita a faixa vermelha.
   const indice=grupos.length-cores.length;
-  const tons=[210,225,240,255,270,285,300,315,330,200,220,245,265,290,310,335];
+  const tons=[210,195,180,165,145,125,95,70,45,280,260,240,220,200,175,155,135,110,85,60,35,300];
   const h=tons[indice%tons.length];
   const ciclo=Math.floor(indice/tons.length);
   const l=[36,48,28,56][ciclo%4];
@@ -396,7 +390,7 @@ function pesoNum(v){
 function fmt(n){return Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function chave(p){return `${p.cliente}|${p.lat}|${p.lon}`}
 function grupoDe(p){const k=chave(p); return grupos.find(g=>g.itens.includes(k))||null}
-function corPonto(p,i){if(selecionados.has(i))return '#148a2a'; const g=grupoDe(p); return g?g.cor:(foraDaProgramacao(p)?'#e67e22':'#c00000')}
+function corPonto(p,i){if(selecionados.has(i))return '#148a2a'; const g=grupoDe(p); return g?g.cor:'#c00000'}
 function icone(p,i){return L.divIcon({className:'',html:`<div class="num" style="background:${corPonto(p,i)}">${p.seq}</div>`,iconSize:[32,32],iconAnchor:[16,16]})}
 
 /* Mostra a placa da rota ao passar o mouse sobre clientes já roteirizados. */
@@ -1170,8 +1164,7 @@ document.getElementById('file').addEventListener('change',async e=>{
         indiceClientes.set(codigo,{
           vd:String(r.Vd ?? r.VD ?? '').trim(),
           sv:String(r.Sv ?? r.SV ?? '').trim(),
-          cidade:String(r.Cidade ?? r.CIDADE ?? '').trim(),
-          diaEntrega:normalizarDiaEntrega(r['DIA DE ENTREGA '] ?? r['DIA DE ENTREGA'] ?? '')
+          cidade:String(r.Cidade ?? r.CIDADE ?? '').trim()
         });
       }
     });
@@ -1209,8 +1202,7 @@ document.getElementById('file').addEventListener('change',async e=>{
       link:String(r['LINK MAPS']??''),
       vd:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).vd || '',
       sv:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).sv || '',
-      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || '',
-      diaEntrega:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).diaEntrega || ''
+      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || ''
     })).filter(p=>Number.isFinite(p.seq)&&p.seq>0&&p.cliente.trim()!==''&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0).sort((a,b)=>a.seq-b.seq);
 
     pontos=ajustarPontosSobrepostos(pontos);
