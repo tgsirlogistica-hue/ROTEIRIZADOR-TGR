@@ -451,8 +451,41 @@ function aplicarModoVisualizacao(ativo){
   }
 }
 
+// Planejamento TGR: sequência por distância viária, a partir da distribuidora.
+const ORIGEM_TGR={lat:-11.295711077746027,lon:-41.85273933886302};
+function ordemPonto(g,p){const i=g.ordem?.indexOf(chave(p))??-1;return i<0?100000+p.seq:i;}
+async function calcularSequenciaTGR(gi){
+  const g=grupos[gi];if(!g)return;
+  const clientes=pontos.filter(p=>g.itens.includes(chave(p)));
+  if(!clientes.length){alert('Esta rota não tem clientes carregados.');return;}
+  const unicos=[...new Map(clientes.map(p=>[chave(p),p])).values()];
+  if(unicos.length>90){alert('Esta rota possui mais de 90 paradas. O limite configurado é de 90.');return;}
+  const btn=document.querySelector(`[data-otimizar="${gi}"]`);
+  if(btn){btn.disabled=true;btn.textContent='Calculando...';}
+  try{
+    const coords=[ORIGEM_TGR,...unicos].map(p=>`${p.lon},${p.lat}`).join(';');
+    const url=`https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`;
+    const resp=await fetch(url,{signal:AbortSignal.timeout(35000)});
+    if(!resp.ok)throw new Error('Serviço de roteamento indisponível (HTTP '+resp.status+').');
+    const json=await resp.json();
+    if(json.code!=='Ok'||!Array.isArray(json.distances))throw new Error('Não foi possível calcular as distâncias pelas ruas.');
+    const restantes=new Set(unicos.map((_,i)=>i+1));
+    const ordem=[];let atual=0;let metros=0;
+    while(restantes.size){
+      let proximo=-1,menor=Infinity;
+      for(const i of restantes){const d=json.distances[atual]?.[i];if(Number.isFinite(d)&&d<menor){menor=d;proximo=i;}}
+      if(proximo<0)throw new Error('Há clientes sem ligação viária encontrada. A sequência não foi salva.');
+      ordem.push(chave(unicos[proximo-1]));metros+=menor;restantes.delete(proximo);atual=proximo;
+    }
+    // Preserva a ordem de pedidos no mesmo cliente e identifica novos pontos adicionados posteriormente.
+    g.ordem=ordem;salvarLocal();atualizar();
+    alert(`Sequência calculada para ${g.nome}: ${ordem.length} paradas. Distância estimada entre paradas: ${(metros/1000).toFixed(1)} km. Confira a lista em "Ver itens". Não inclui retorno à base.`);
+  }catch(err){alert('Não foi possível calcular a sequência: '+err.message+'\nConfira a conexão e tente novamente. Nenhuma ordem anterior foi substituída.');}
+  finally{if(btn){btn.disabled=false;btn.textContent='Calcular sequência';}}
+}
+
 function dadosRotasParaPlanilha(){
-  const linhas=[['TIPO','PLACA','COR','CHAVE_ITEM','DATA_SALVAMENTO','MOTORISTA']];
+  const linhas=[['TIPO','PLACA','COR','CHAVE_ITEM','DATA_SALVAMENTO','MOTORISTA','ORDEM_ENTREGA']];
   const agora=new Date().toISOString();
   grupos.forEach(g=>{
     const motorista=String(
@@ -460,7 +493,7 @@ function dadosRotasParaPlanilha(){
       (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
       ''
     );
-    (g.itens||[]).forEach(k=>linhas.push(['ROTA',String(g.nome||''),String(g.cor||''),String(k||''),agora,motorista]));
+    (g.itens||[]).forEach(k=>linhas.push(['ROTA',String(g.nome||''),String(g.cor||''),String(k||''),agora,motorista,g.ordem?.includes(k)?g.ordem.indexOf(k)+1:'']));
   });
   return linhas;
 }
@@ -477,11 +510,14 @@ function restaurarRotasDaPlanilha(wb){
     const cor=String(r[2]||'').trim()||proximaCor();
     const item=String(r[3]||'').trim();
     const motorista=String(r[5]||'').trim();
+    const ordem=Number(r[6]);
     if(!placa || !item) return;
     if(!mapa.has(placa)) mapa.set(placa,{nome:placa,motorista,cor,itens:[]});
     if(!mapa.get(placa).itens.includes(item)) mapa.get(placa).itens.push(item);
+    if(Number.isInteger(ordem)&&ordem>0){ (mapa.get(placa)._ordens ||= []).push({item,ordem}); }
   });
   const restaurados=[...mapa.values()];
+  restaurados.forEach(g=>{if(g._ordens?.length){g.ordem=g._ordens.sort((a,b)=>a.ordem-b.ordem).map(x=>x.item);} delete g._ordens;});
   if(!restaurados.length) return false;
   grupos=restaurados;
   salvarLocal();
@@ -560,7 +596,7 @@ function desenharGrupos(){
     const d=document.createElement('div'); d.className='grupo';
     const acoes=modoVisualizacao
       ? `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button></div>`
-      : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
+      : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-otimizar="${gi}">Calcular sequência</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
     const motoristaGrupo=String(
       g.motorista ||
       (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
@@ -579,7 +615,7 @@ function desenharGrupos(){
 
     const itensDoGrupo=pontos
       .filter(p=>g.itens.includes(chave(p)))
-      .sort((a,b)=>a.seq-b.seq);
+      .sort((a,b)=>ordemPonto(g,a)-ordemPonto(g,b));
 
     if(!itensDoGrupo.length){
       itensBox.innerHTML='<div class="small">Nenhum item deste grupo está presente na planilha carregada.</div>';
@@ -588,12 +624,13 @@ function desenharGrupos(){
         const item=document.createElement('div');
         item.className='itemGrupo';
         const k=chave(p);
-        item.innerHTML=`<span><b>${p.seq}</b> - ${p.fantasia || p.cliente}<br><small>${p.cliente} | Peso: ${fmt(pesoNum(p.peso))}</small></span>${modoVisualizacao?'':`<button class="sec" data-remover-grupo="${gi}" data-chave="${encodeURIComponent(k)}">Remover</button>`}`;
+        item.innerHTML=`<span><b>${g.ordem?.includes(chave(p)) ? (g.ordem.indexOf(chave(p))+1)+'ª entrega | ' : ''}Pedido ${p.seq}</b> - ${p.fantasia || p.cliente}<br><small>${p.cliente} | Peso: ${fmt(pesoNum(p.peso))}</small></span>${modoVisualizacao?'':`<button class="sec" data-remover-grupo="${gi}" data-chave="${encodeURIComponent(k)}">Remover</button>`}`;
         itensBox.appendChild(item);
       });
     }
     box.appendChild(itensBox);
   });
+  box.querySelectorAll('[data-otimizar]').forEach(b=>b.onclick=()=>calcularSequenciaTGR(+b.dataset.otimizar));
   box.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
     const i=+b.dataset.v;
     const painel=document.getElementById(`itensGrupo_${i}`);
@@ -989,14 +1026,15 @@ function montarRelatorioCsv(){
     'LATITUDE',
     'LONGITUDE',
     'LINK GPS',
-    'STATUS DO PEDIDO'
+    'STATUS DO PEDIDO',
+    'ORDEM DE ENTREGA'
   ]);
 
   // Primeiro entram todos os pedidos que pertencem a alguma rota salva.
   grupos.forEach(g=>{
     pontos
       .filter(p=>g.itens.includes(chave(p)))
-      .sort((a,b)=>a.seq-b.seq)
+      .sort((a,b)=>ordemPonto(g,a)-ordemPonto(g,b))
       .forEach(p=>{
         linhas.push([
           p.cliente,
@@ -1010,7 +1048,8 @@ function montarRelatorioCsv(){
           coordenadaCsv(p.lat),
           coordenadaCsv(p.lon),
           (/^https?:\/\//i.test(p.link) ? p.link : `https://www.google.com/maps?q=${p.lat},${p.lon}`),
-          'Roteirizado'
+          'Roteirizado',
+          g.ordem?.includes(chave(p)) ? g.ordem.indexOf(chave(p))+1 : ''
         ]);
       });
   });
