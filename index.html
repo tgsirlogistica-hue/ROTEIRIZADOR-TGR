@@ -229,6 +229,7 @@ margin-bottom:8px
 .barraSuperiorTGR .buscaTGR input{width:190px;max-width:28vw;height:36px}
 .modoVisualizacao .barraSuperiorTGR{display:none!important}
 @media(max-width:700px){.barraSuperiorTGR{gap:6px;top:12px}.barraSuperiorTGR .buscaTGR{padding:4px}.barraSuperiorTGR .buscaTGR input{width:112px;max-width:29vw;height:33px}}
+.indicadorCapacidade{margin-top:8px;max-width:360px}.capacidadeTexto{display:flex;justify-content:space-between;gap:8px;font-size:11px}.capacidadeTrilho{height:9px;background:#e6e6e6;border-radius:8px;overflow:hidden;margin:5px 0}.indicadorCapacidade small{font-size:11px;color:#555}
 </style>
 </head>
 <body>
@@ -701,14 +702,17 @@ function desenharGrupos(){
       ? `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button></div>`
       : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-otimizar="${gi}">Calcular sequência</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
     const motoristaGrupo=String(
-      g.motorista ||
       (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
-      ''
+      g.motorista || ''
     ).trim();
+    const capacidadeGrupo=(indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).capacidade || 0;
+    const percentualGrupo=capacidadeGrupo ? peso/capacidadeGrupo*100 : 0;
+    const corCapacidade=percentualGrupo>100?'#bd2020':percentualGrupo>=90?'#d39b21':'#16834a';
+    const indicadorCapacidade=capacidadeGrupo ? `<div class="indicadorCapacidade"><div class="capacidadeTexto"><b>Capacidade: ${fmt(peso)} / ${fmt(capacidadeGrupo)}</b><b style="color:${corCapacidade}">${percentualGrupo.toFixed(1).replace('.',',')}%</b></div><div class="capacidadeTrilho"><div style="width:${Math.min(100,percentualGrupo)}%;background:${corCapacidade};height:100%"></div></div><small>${percentualGrupo>100?'Excesso: '+fmt(peso-capacidadeGrupo):'Disponível: '+fmt(capacidadeGrupo-peso)}</small></div>` : '<div class="small">Capacidade não cadastrada para esta placa.</div>';
     const linhaMotorista=motoristaGrupo
       ? `<b class="motoristaRota">${motoristaGrupo}</b><br>`
       : '';
-    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow">${linhaMotorista}<b>${g.nome}</b> — <b>${cidadesTexto}</b><br>${qtd} entregas | ${fmt(peso)} de peso</span>${acoes}`;
+    d.innerHTML=`<span class="dot" style="background:${g.cor}"></span><span class="grow">${linhaMotorista}<b>${g.nome}</b> — <b>${cidadesTexto}</b><br>${qtd} entregas | ${fmt(peso)} de peso${indicadorCapacidade}</span>${acoes}`;
     box.appendChild(d);
 
     const itensBox=document.createElement('div');
@@ -1327,6 +1331,7 @@ document.getElementById('file').addEventListener('change',async e=>{
       if(placa){
         indiceEquipes.set(placa,{
           motorista:String(r.MOTORISTA ?? '').trim(),
+          capacidade:Number(String(r.CAPACIDADE ?? '').replace(/\./g,'').replace(',','.')) || 0,
           ajudante1:String(r['AJUDANTE 1'] ?? '').trim(),
           ajudante2:String(r['AJUDANTE 2'] ?? '').trim()
         });
