@@ -680,6 +680,14 @@ function salvarLocal(){
 function carregarLocal(){try{grupos=JSON.parse(localStorage.getItem('gruposRotaV1')||'[]')}catch(e){grupos=[]}}
 function desenharGrupos(){
   const box=document.getElementById('grupos');
+  // Mantém as listas abertas e a posição da rolagem ao atualizar os itens.
+  const painelRotas=box.closest('.panel');
+  const posicaoRolagem=painelRotas ? painelRotas.scrollTop : 0;
+  const gruposAbertos=new Set(
+    [...box.querySelectorAll('.itensGrupo')]
+      .filter(el=>el.style.display!=='none')
+      .map(el=>Number(el.id.replace('itensGrupo_','')))
+  );
   if(!grupos.length){box.innerHTML='Nenhum grupo salvo.';return}
   box.innerHTML='';
   grupos.forEach((g,gi)=>{
@@ -721,7 +729,7 @@ function desenharGrupos(){
     const itensBox=document.createElement('div');
     itensBox.className='itensGrupo';
     itensBox.id=`itensGrupo_${gi}`;
-    itensBox.style.display='none';
+    itensBox.style.display=gruposAbertos.has(gi)?'block':'none';
 
     const itensDoGrupo=pontos
       .filter(p=>g.itens.includes(chave(p)))
@@ -740,6 +748,10 @@ function desenharGrupos(){
     }
     box.appendChild(itensBox);
   });
+  box.querySelectorAll('[data-v]').forEach(b=>{
+    if(gruposAbertos.has(Number(b.dataset.v))) b.textContent='Ocultar itens';
+  });
+  if(painelRotas) painelRotas.scrollTop=posicaoRolagem;
   box.querySelectorAll('[data-otimizar]').forEach(b=>b.onclick=()=>calcularSequenciaTGR(+b.dataset.otimizar));
   box.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
     const i=+b.dataset.v;
