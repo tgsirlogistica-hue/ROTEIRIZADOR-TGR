@@ -175,6 +175,23 @@ margin-bottom:8px
 .previewFiltro label{font-weight:bold;color:#444;white-space:nowrap}
 .previewFiltro select{flex:1;min-width:0;padding:7px;border:1px solid #bbb;border-radius:6px;background:#fff;color:#222}
 .previewClienteBtn{background:none;color:#145c9a;border:0;padding:0;font:inherit;font-weight:bold;text-align:left;text-decoration:underline;cursor:pointer}.previewClienteBtn:hover{color:#c00000}.previewLinhaCliente{display:flex;align-items:center;gap:8px}.previewRemoverBtn{margin-left:auto;background:#f3f3f3;color:#9b1c1c;border:1px solid #ddd;padding:4px 7px;font-size:11px;white-space:nowrap}.previewRemoverBtn:hover{background:#ffe7e7}.previewDestaque{background:#fff5df;border-radius:6px}.marcadorFoco{outline:4px solid #ffbf00;outline-offset:2px;box-shadow:0 0 0 7px #ffbf0055!important}
+
+/* Ferramentas de seleção no topo, em linha horizontal */
+.ferramentasSelecao{
+  position:fixed;top:12px;right:390px;left:auto;transform:none;
+  flex-direction:row;align-items:center;justify-content:center;flex-wrap:nowrap;
+  gap:7px;padding:7px;max-width:calc(100vw - 510px);
+  overflow-x:auto;overflow-y:visible;box-sizing:border-box;
+}
+.ferramentaBtn{flex:0 0 auto}
+.ferramentaBtn[data-tip]::after{right:auto;left:50%;top:calc(100% + 9px);transform:translateX(-50%)}
+@media(max-width:1100px){
+  .ferramentasSelecao{top:12px;right:12px;max-width:calc(100vw - 510px)}
+}
+@media(max-width:900px){
+  .ferramentasSelecao{top:auto;bottom:12px;right:12px;left:12px;max-width:none;justify-content:flex-start}
+  .ferramentaBtn[data-tip]::after{top:auto;bottom:calc(100% + 9px)}
+}
 </style>
 </head>
 <body>
