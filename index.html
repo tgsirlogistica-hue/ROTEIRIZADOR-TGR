@@ -221,6 +221,14 @@ margin-bottom:8px
 .resultadoBuscaTGR strong{display:block;color:#a00000;font-size:13px}
 .buscaVaziaTGR{padding:12px;font-size:12px;color:#666}
 @media(max-width:700px){#ferramentasSelecao{left:50%!important;top:12px!important;bottom:auto!important;transform:translateX(-50%)!important;gap:3px!important;padding:4px!important}.buscaTGR{margin-left:2px}.buscaTGR input{width:120px;max-width:30vw;height:33px;font-size:11px;padding-left:6px}.buscaTGR .lupa{display:none}}
+
+/* Barra de busca independente, próxima às ferramentas, sem rolagem */
+.barraSuperiorTGR{position:fixed;z-index:1250;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:flex-start;gap:10px;max-width:calc(100vw - 20px);box-sizing:border-box}
+#ferramentasSelecao{position:relative!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;transform:none!important;max-width:none!important;width:max-content!important;flex-shrink:0!important;margin:0!important}
+.barraSuperiorTGR .buscaTGR{position:relative;flex:0 0 auto;margin:0!important;padding:6px;background:rgba(255,255,255,.96);border:1px solid #bbb;border-radius:11px;box-shadow:0 3px 12px #0003;box-sizing:border-box}
+.barraSuperiorTGR .buscaTGR input{width:190px;max-width:28vw;height:36px}
+.modoVisualizacao .barraSuperiorTGR{display:none!important}
+@media(max-width:700px){.barraSuperiorTGR{gap:6px;top:12px}.barraSuperiorTGR .buscaTGR{padding:4px}.barraSuperiorTGR .buscaTGR input{width:112px;max-width:29vw;height:33px}}
 </style>
 </head>
 <body>
@@ -290,7 +298,8 @@ O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da ro
 
 <div id="map"></div>
 
-<div id="ferramentasSelecao" class="ferramentasSelecao somenteEdicao">
+<div id="barraSuperiorTGR" class="barraSuperiorTGR somenteEdicao">
+<div id="ferramentasSelecao" class="ferramentasSelecao">
   <button id="todas" class="ferramentaBtn" type="button" data-tip="Selecionar tudo" aria-label="Selecionar tudo">
     <span style="font-size:25px;font-weight:900">✓</span>
   </button>
@@ -303,8 +312,9 @@ O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da ro
   <button id="limpar" class="ferramentaBtn" type="button" data-tip="Limpar seleção" aria-label="Limpar seleção">
     <span style="font-size:24px;font-weight:900">×</span>
   </button>
+</div>
   <div class="buscaTGR">
-    <input id="pesquisaClienteTGR" type="search" autocomplete="off" placeholder="Buscar cliente ou pedido..." aria-label="Buscar por código, pedido, fantasia ou razão social">
+    <input id="pesquisaClienteTGR" type="search" inputmode="numeric" autocomplete="off" placeholder="Código do cliente..." aria-label="Buscar localização pelo código do cliente">
     <span class="lupa">⌕</span>
     <div id="resultadosBuscaTGR" role="listbox"></div>
   </div>
@@ -1436,31 +1446,23 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 
-// Pesquisa por código, pedido, nome fantasia ou razão social (somente pontos com coordenadas).
+// Busca exclusivamente pelo código do cliente presente na aba ROTA.
 (function configurarPesquisaTGR(){
   const campo=document.getElementById('pesquisaClienteTGR');
   const lista=document.getElementById('resultadosBuscaTGR');
-  const normalizar=v=>String(v??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
+  const codigo=v=>String(v??'').replace(/\D/g,'').replace(/^0+(?=\d)/,'');
   const escapar=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function fechar(){lista.style.display='none';lista.innerHTML='';}
   function pesquisar(){
-    const termo=normalizar(campo.value);
+    const termo=codigo(campo.value);
     if(!termo){fechar();return;}
-    const encontrados=pontos.map((p,i)=>({p,i})).filter(({p})=>
-      [p.cliente,p.pedido,p.fantasia,p.razao].some(v=>normalizar(v).includes(termo))
-    ).slice(0,30);
+    const encontrados=pontos.map((p,i)=>({p,i})).filter(({p})=>codigo(p.cliente).includes(termo)).slice(0,40);
     lista.innerHTML='';
-    if(!encontrados.length){lista.innerHTML='<div class="buscaVaziaTGR">Nenhuma localização encontrada.</div>'}
+    if(!encontrados.length)lista.innerHTML='<div class="buscaVaziaTGR">Código não encontrado entre as localizações importadas.</div>';
     encontrados.forEach(({p,i})=>{
       const btn=document.createElement('button');btn.type='button';btn.className='resultadoBuscaTGR';
-      btn.innerHTML='<strong>'+escapar(p.fantasia||p.razao||'Cliente '+p.cliente)+'</strong>'+
-        'Cód.: '+escapar(p.cliente)+' · Pedido: '+escapar(p.pedido)+
-        (p.razao?'<br>'+escapar(p.razao):'');
-      btn.addEventListener('click',()=>{
-        campo.value=p.fantasia||p.cliente;
-        fechar();
-        focarClientePreview(i);
-      });
+      btn.innerHTML='<strong>Código: '+escapar(p.cliente)+'</strong>'+escapar(p.fantasia||p.razao||'Cliente')+' · Pedido: '+escapar(p.pedido);
+      btn.addEventListener('click',()=>{campo.value=p.cliente;fechar();focarClientePreview(i);});
       lista.appendChild(btn);
     });
     lista.style.display='block';
@@ -1468,13 +1470,10 @@ document.addEventListener('DOMContentLoaded', function(){
   campo.addEventListener('input',pesquisar);
   campo.addEventListener('focus',pesquisar);
   campo.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){fechar();campo.blur()}
-    if(e.key==='Enter'){
-      const primeiro=lista.querySelector('button');
-      if(primeiro){e.preventDefault();primeiro.click()}
-    }
+    if(e.key==='Escape'){fechar();campo.blur();}
+    if(e.key==='Enter'){const primeiro=lista.querySelector('button');if(primeiro){e.preventDefault();primeiro.click();}}
   });
-  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.buscaTGR'))fechar()});
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.buscaTGR'))fechar();});
   campo.addEventListener('pointerdown',e=>e.stopPropagation());
   lista.addEventListener('pointerdown',e=>e.stopPropagation());
 })();
