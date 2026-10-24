@@ -208,6 +208,19 @@ margin-bottom:8px
 .ferramentaBtn .iconeLinha{width:22px!important;height:22px!important}
 .ferramentaBtn[data-tip]::after{left:50%!important;right:auto!important;top:calc(100% + 9px)!important;bottom:auto!important;transform:translateX(-50%)!important}
 @media(max-width:700px){.ferramentasSelecao{top:12px!important;bottom:auto!important;gap:4px!important;padding:5px!important}.ferramentaBtn{width:33px!important;height:33px!important;flex-basis:33px!important}}
+
+/* Busca integrada às ferramentas, centralizada sem rolagem */
+#ferramentasSelecao{left:50%!important;right:auto!important;top:12px!important;bottom:auto!important;transform:translateX(-50%)!important;overflow:visible!important;max-width:calc(100vw - 20px)!important;flex-wrap:nowrap!important}
+.buscaTGR{position:relative;display:flex;align-items:center;min-width:0;margin-left:5px}
+.buscaTGR input{width:230px;max-width:28vw;height:34px;box-sizing:border-box;border:1px solid #aaa;border-radius:7px;padding:6px 30px 6px 10px;font:12px Arial,sans-serif;background:white;outline:none}
+.buscaTGR input:focus{border-color:#c00000;box-shadow:0 0 0 2px #c0000020}
+.buscaTGR .lupa{position:absolute;right:9px;top:8px;pointer-events:none;color:#666;font-size:16px}
+#resultadosBuscaTGR{display:none;position:absolute;right:0;top:calc(100% + 9px);width:min(350px,85vw);max-height:300px;overflow-y:auto;background:#fff;border:1px solid #ddd;border-radius:9px;box-shadow:0 5px 18px #0003;z-index:1400}
+.resultadoBuscaTGR{display:block;width:100%;border:0;border-bottom:1px solid #eee;border-radius:0;background:#fff;color:#222;text-align:left;padding:10px;font-weight:normal;font-size:12px;line-height:1.45}
+.resultadoBuscaTGR:hover,.resultadoBuscaTGR:focus{background:#fff0f0}
+.resultadoBuscaTGR strong{display:block;color:#a00000;font-size:13px}
+.buscaVaziaTGR{padding:12px;font-size:12px;color:#666}
+@media(max-width:700px){#ferramentasSelecao{left:50%!important;top:12px!important;bottom:auto!important;transform:translateX(-50%)!important;gap:3px!important;padding:4px!important}.buscaTGR{margin-left:2px}.buscaTGR input{width:120px;max-width:30vw;height:33px;font-size:11px;padding-left:6px}.buscaTGR .lupa{display:none}}
 </style>
 </head>
 <body>
@@ -290,6 +303,11 @@ O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da ro
   <button id="limpar" class="ferramentaBtn" type="button" data-tip="Limpar seleção" aria-label="Limpar seleção">
     <span style="font-size:24px;font-weight:900">×</span>
   </button>
+  <div class="buscaTGR">
+    <input id="pesquisaClienteTGR" type="search" autocomplete="off" placeholder="Buscar cliente ou pedido..." aria-label="Buscar por código, pedido, fantasia ou razão social">
+    <span class="lupa">⌕</span>
+    <div id="resultadosBuscaTGR" role="listbox"></div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1302,7 +1320,8 @@ document.getElementById('file').addEventListener('change',async e=>{
         indiceClientes.set(codigo,{
           vd:String(r.Vd ?? r.VD ?? '').trim(),
           sv:String(r.Sv ?? r.SV ?? '').trim(),
-          cidade:String(r.Cidade ?? r.CIDADE ?? '').trim()
+          cidade:String(r.Cidade ?? r.CIDADE ?? '').trim(),
+          razao:String(r['Razão Social'] ?? r['RAZÃO SOCIAL'] ?? r['RAZAO SOCIAL'] ?? r['Razao Social'] ?? '').trim()
         });
       }
     });
@@ -1340,7 +1359,8 @@ document.getElementById('file').addEventListener('change',async e=>{
       link:String(r['LINK MAPS']??''),
       vd:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).vd || '',
       sv:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).sv || '',
-      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || ''
+      cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || '',
+      razao:String(r['RAZÃO SOCIAL'] ?? r['RAZAO SOCIAL'] ?? r['RAZÃO'] ?? r['RAZAO'] ?? (indiceClientes.get(String(r.CLIENTE??'').trim())||{}).razao ?? '')
     })).filter(p=>Number.isFinite(p.seq)&&p.seq>0&&p.cliente.trim()!==''&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0).sort((a,b)=>a.seq-b.seq);
 
     pontos=ajustarPontosSobrepostos(pontos);
@@ -1401,6 +1421,50 @@ document.addEventListener('DOMContentLoaded', function(){
     window.location.reload();
   });
 });
+
+// Pesquisa por código, pedido, nome fantasia ou razão social (somente pontos com coordenadas).
+(function configurarPesquisaTGR(){
+  const campo=document.getElementById('pesquisaClienteTGR');
+  const lista=document.getElementById('resultadosBuscaTGR');
+  const normalizar=v=>String(v??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
+  const escapar=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function fechar(){lista.style.display='none';lista.innerHTML='';}
+  function pesquisar(){
+    const termo=normalizar(campo.value);
+    if(!termo){fechar();return;}
+    const encontrados=pontos.map((p,i)=>({p,i})).filter(({p})=>
+      [p.cliente,p.pedido,p.fantasia,p.razao].some(v=>normalizar(v).includes(termo))
+    ).slice(0,30);
+    lista.innerHTML='';
+    if(!encontrados.length){lista.innerHTML='<div class="buscaVaziaTGR">Nenhuma localização encontrada.</div>'}
+    encontrados.forEach(({p,i})=>{
+      const btn=document.createElement('button');btn.type='button';btn.className='resultadoBuscaTGR';
+      btn.innerHTML='<strong>'+escapar(p.fantasia||p.razao||'Cliente '+p.cliente)+'</strong>'+
+        'Cód.: '+escapar(p.cliente)+' · Pedido: '+escapar(p.pedido)+
+        (p.razao?'<br>'+escapar(p.razao):'');
+      btn.addEventListener('click',()=>{
+        campo.value=p.fantasia||p.cliente;
+        fechar();
+        focarClientePreview(i);
+      });
+      lista.appendChild(btn);
+    });
+    lista.style.display='block';
+  }
+  campo.addEventListener('input',pesquisar);
+  campo.addEventListener('focus',pesquisar);
+  campo.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){fechar();campo.blur()}
+    if(e.key==='Enter'){
+      const primeiro=lista.querySelector('button');
+      if(primeiro){e.preventDefault();primeiro.click()}
+    }
+  });
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.buscaTGR'))fechar()});
+  campo.addEventListener('pointerdown',e=>e.stopPropagation());
+  lista.addEventListener('pointerdown',e=>e.stopPropagation());
+})();
+
 </script>
 
 </body>
