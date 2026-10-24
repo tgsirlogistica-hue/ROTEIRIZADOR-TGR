@@ -563,34 +563,59 @@ function aplicarModoVisualizacao(ativo){
 // Planejamento TGR: sequência por distância viária, a partir da distribuidora.
 const ORIGEM_TGR={lat:-11.295711077746027,lon:-41.85273933886302};
 function ordemPonto(g,p){const i=g.ordem?.indexOf(chave(p))??-1;return i<0?100000+p.seq:i;}
-async function calcularSequenciaTGR(gi){
+// Atualização automática com intervalo para evitar requisições repetidas.
+let timerSequenciaTGR=null;
+let versaoSequenciaTGR=0;
+function agendarSequenciaAutomaticaTGR(){
+  if(modoVisualizacao)return;
+  versaoSequenciaTGR++;
+  clearTimeout(timerSequenciaTGR);
+  timerSequenciaTGR=setTimeout(async()=>{
+    const versao=versaoSequenciaTGR;
+    for(const g of [...grupos]){
+      if(versao!==versaoSequenciaTGR)return;
+      const indice=grupos.indexOf(g);
+      if(indice<0)continue;
+      const clientes=pontos.filter(p=>g.itens.includes(chave(p)));
+      if(!clientes.length || clientes.length>90)continue;
+      const assinatura=JSON.stringify(clientes.map(p=>[chave(p),p.lat,p.lon]));
+      if(g.assinaturaSequencia===assinatura && Array.isArray(g.ordem) && g.ordem.length===clientes.length)continue;
+      await calcularSequenciaTGR(indice,versao,assinatura);
+    }
+  },650);
+}
+async function calcularSequenciaTGR(gi,versao,assinatura){
   const g=grupos[gi];if(!g)return;
   const clientes=pontos.filter(p=>g.itens.includes(chave(p)));
-  if(!clientes.length){alert('Esta rota não tem clientes carregados.');return;}
+  if(!clientes.length || clientes.length>90)return;
   const unicos=[...new Map(clientes.map(p=>[chave(p),p])).values()];
-  if(unicos.length>90){alert('Esta rota possui mais de 90 paradas. O limite configurado é de 90.');return;}
-  const btn=document.querySelector(`[data-otimizar="${gi}"]`);
-  if(btn){btn.disabled=true;btn.textContent='Calculando...';}
+  const assinaturaAtual=assinatura||JSON.stringify(clientes.map(p=>[chave(p),p.lat,p.lon]));
   try{
     const coords=[ORIGEM_TGR,...unicos].map(p=>`${p.lon},${p.lat}`).join(';');
     const url=`https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`;
     const resp=await fetch(url,{signal:AbortSignal.timeout(35000)});
-    if(!resp.ok)throw new Error('Serviço de roteamento indisponível (HTTP '+resp.status+').');
+    if(!resp.ok)throw new Error('Serviço de roteamento indisponível');
     const json=await resp.json();
-    if(json.code!=='Ok'||!Array.isArray(json.distances))throw new Error('Não foi possível calcular as distâncias pelas ruas.');
+    if(json.code!=='Ok'||!Array.isArray(json.distances))throw new Error('Distâncias indisponíveis');
     const restantes=new Set(unicos.map((_,i)=>i+1));
-    const ordem=[];let atual=0;let metros=0;
+    const ordem=[];let atual=0;
     while(restantes.size){
       let proximo=-1,menor=Infinity;
       for(const i of restantes){const d=json.distances[atual]?.[i];if(Number.isFinite(d)&&d<menor){menor=d;proximo=i;}}
-      if(proximo<0)throw new Error('Há clientes sem ligação viária encontrada. A sequência não foi salva.');
-      ordem.push(chave(unicos[proximo-1]));metros+=menor;restantes.delete(proximo);atual=proximo;
+      if(proximo<0)throw new Error('Sem ligação viária');
+      ordem.push(chave(unicos[proximo-1]));restantes.delete(proximo);atual=proximo;
     }
-    // Preserva a ordem de pedidos no mesmo cliente e identifica novos pontos adicionados posteriormente.
-    g.ordem=ordem;salvarLocal();atualizar();
-    alert(`Sequência calculada para ${g.nome}: ${ordem.length} paradas. Distância estimada entre paradas: ${(metros/1000).toFixed(1)} km. Confira a lista em "Ver itens". Não inclui retorno à base.`);
-  }catch(err){alert('Não foi possível calcular a sequência: '+err.message+'\nConfira a conexão e tente novamente. Nenhuma ordem anterior foi substituída.');}
-  finally{if(btn){btn.disabled=false;btn.textContent='Calcular sequência';}}
+    // Descarta resultados antigos se a rota mudou enquanto a consulta estava em andamento.
+    if((versao!==undefined && versao!==versaoSequenciaTGR) || grupos[gi]!==g ||
+       JSON.stringify(pontos.filter(p=>g.itens.includes(chave(p))).map(p=>[chave(p),p.lat,p.lon]))!==assinaturaAtual)return;
+    g.ordem=ordem;
+    g.assinaturaSequencia=assinaturaAtual;
+    salvarLocal(false);
+    atualizar();
+  }catch(err){
+    console.warn('Sequência automática não atualizada para '+g.nome+': '+err.message);
+    // Conserva a sequência anterior quando o serviço estiver indisponível.
+  }
 }
 
 function dadosRotasParaPlanilha(){
@@ -678,9 +703,10 @@ function atualizar(){
   atualizarPreview(total);
   desenharGrupos();
 }
-function salvarLocal(){
+function salvarLocal(recalcular=true){
   localStorage.setItem('gruposRotaV1',JSON.stringify(grupos));
   atualizarSelectRotas();
+  if(recalcular)agendarSequenciaAutomaticaTGR();
 }
 function carregarLocal(){try{grupos=JSON.parse(localStorage.getItem('gruposRotaV1')||'[]')}catch(e){grupos=[]}}
 function desenharGrupos(){
@@ -713,7 +739,7 @@ function desenharGrupos(){
     const d=document.createElement('div'); d.className='grupo';
     const acoes=modoVisualizacao
       ? `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button></div>`
-      : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-otimizar="${gi}">Calcular sequência</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
+      : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
     const motoristaGrupo=String(
       (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
       g.motorista || ''
@@ -757,7 +783,6 @@ function desenharGrupos(){
     if(gruposAbertos.has(Number(b.dataset.v))) b.textContent='Ocultar itens';
   });
   if(painelRotas) painelRotas.scrollTop=posicaoRolagem;
-  box.querySelectorAll('[data-otimizar]').forEach(b=>b.onclick=()=>calcularSequenciaTGR(+b.dataset.otimizar));
   box.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
     const i=+b.dataset.v;
     const painel=document.getElementById(`itensGrupo_${i}`);
@@ -1466,6 +1491,7 @@ document.getElementById('file').addEventListener('change',async e=>{
     })).filter(p=>Number.isFinite(p.seq)&&p.seq>0&&p.cliente.trim()!==''&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0).sort((a,b)=>a.seq-b.seq);
 
     pontos=ajustarPontosSobrepostos(pontos);
+    agendarSequenciaAutomaticaTGR();
 
     if(!pontos.length)throw new Error('Nenhum ponto válido encontrado.');
     layer.clearLayers(); selecionados.clear();
