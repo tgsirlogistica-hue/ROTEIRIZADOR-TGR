@@ -1279,6 +1279,20 @@ document.getElementById('file').addEventListener('change',async e=>{
     const sn=wb.SheetNames.find(n=>n.trim().toUpperCase()==='ROTA');
     if(!sn)throw new Error('Aba ROTA não encontrada.');
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:null});
+    // Pedidos oficiais: coluna C da aba RELATORIO PRE ROTEIRIZAÇÃO.
+    // A aba ROTA mantém o vínculo do pedido com as coordenadas do cliente.
+    const relNome=wb.SheetNames.find(n=>n.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')==='RELATORIO PRE ROTEIRIZACAO');
+    if(!relNome)throw new Error('Aba RELATORIO PRE ROTEIRIZAÇÃO não encontrada.');
+    const relLinhas=XLSX.utils.sheet_to_json(wb.Sheets[relNome],{header:1,defval:'',raw:false});
+    const normalizarPedido=v=>String(v??'').trim().replace(/^0+(?=\d)/,'');
+    const pedidosRelatorio=new Set(relLinhas.slice(8).map(l=>normalizarPedido(l[2])).filter(v=>/^\d+$/.test(v)));
+    const numeroPedidoRota=r=>{
+      const n=normalizarPedido(r.PEDIDO);
+      return /^\d+$/.test(n) ? Number(n) : NaN;
+    };
+    const naoEncontrados=rows.filter(r=>String(r.PEDIDO??'').trim() && !pedidosRelatorio.has(normalizarPedido(r.PEDIDO)));
+    if(naoEncontrados.length)console.warn('Pedidos da aba ROTA não encontrados na coluna C do relatório:',naoEncontrados.map(r=>r.PEDIDO));
+
 
     const dadosClienteSheet=wb.SheetNames.find(
       n=>n.trim().toUpperCase()==='DODOS DO CLIENTE'
@@ -1330,7 +1344,7 @@ document.getElementById('file').addEventListener('change',async e=>{
     const clientesSemCoordenadas=[...new Set(
       rows
         .map(r=>({
-          seq:Number(r.SEQUEN ?? r.PEDIDO),
+          seq:numeroPedidoRota(r),
           cliente:String(r.CLIENTE??'').trim(),
           lat:Number(r.LAT),
           lon:Number(r.LONG)
@@ -1349,8 +1363,8 @@ document.getElementById('file').addEventListener('change',async e=>{
 
     pontos=rows.map(r=>({
 
-      seq:Number(r.SEQUEN ?? r.PEDIDO),
-      pedido:String(r.PEDIDO ?? r.SEQUEN ?? '').trim(),
+      seq:numeroPedidoRota(r),
+      pedido:normalizarPedido(r.PEDIDO),
       cliente:String(r.CLIENTE??'').trim(),
       fantasia:String(r['NOME DO FANTASIA']??''),
       peso:r.PESO??'',
