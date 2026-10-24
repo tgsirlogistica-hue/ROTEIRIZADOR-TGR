@@ -171,6 +171,9 @@ margin-bottom:8px
   color:#333;
   margin-bottom:1px;
 }
+.previewFiltro{display:flex;align-items:center;gap:8px;margin:9px 0 5px;font-size:12px}
+.previewFiltro label{font-weight:bold;color:#444;white-space:nowrap}
+.previewFiltro select{flex:1;min-width:0;padding:7px;border:1px solid #bbb;border-radius:6px;background:#fff;color:#222}
 </style>
 </head>
 <body>
@@ -221,6 +224,7 @@ O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da ro
     <span><b>Itens:</b> <span id="prevQtd">0</span></span>
     <span><b>Peso:</b> <span id="prevPeso">0,00</span></span>
   </div>
+  <div class="previewFiltro"><label for="filtroPesoPreview">Ordenar por peso:</label><select id="filtroPesoPreview" onchange="atualizarPreviewLista()"><option value="padrao">Ordem dos pedidos</option><option value="maior">Maior para menor</option><option value="menor">Menor para maior</option></select></div>
   <div id="previewLista" class="previewVazio">Nenhum item selecionado.</div>
 </div>
 
@@ -417,6 +421,10 @@ function atualizarTooltipPlaca(p){
     p.marker.unbindTooltip();
   }
 }
+function atualizarPreviewLista(){
+  const total=[...selecionados].reduce((s,i)=>s+pesoNum(pontos[i].peso),0);
+  atualizarPreview(total);
+}
 function atualizarPreview(total){
   const lista=document.getElementById('previewLista');
   document.getElementById('prevQtd').textContent=selecionados.size;
@@ -427,8 +435,9 @@ function atualizarPreview(total){
     return;
   }
   lista.className='';
+  const ordem=document.getElementById('filtroPesoPreview').value;
   lista.innerHTML=[...selecionados]
-    .sort((a,b)=>pontos[a].seq-pontos[b].seq)
+    .sort((a,b)=>ordem==='maior' ? pesoNum(pontos[b].peso)-pesoNum(pontos[a].peso) : ordem==='menor' ? pesoNum(pontos[a].peso)-pesoNum(pontos[b].peso) : pontos[a].seq-pontos[b].seq)
     .map(i=>{
       const p=pontos[i];
       return `<div class="previewItem">
