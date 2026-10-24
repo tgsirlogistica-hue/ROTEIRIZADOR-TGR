@@ -1214,6 +1214,56 @@ function montarRelatorioCsv(){
 
 }
 
+// Terceiro relatório: base analítica completa (uma linha por pedido importado).
+// Não altera os dois relatórios existentes nem os dados usados pelo GPS.
+function montarHistoricoOperacionalCsv(){
+  const info=informacoesDataRota();
+  const agora=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const momento=`${agora.getFullYear()}-${pad(agora.getMonth()+1)}-${pad(agora.getDate())} ${pad(agora.getHours())}:${pad(agora.getMinutes())}:${pad(agora.getSeconds())}`;
+  const idFechamento=`${info.data}_${agora.getFullYear()}${pad(agora.getMonth()+1)}${pad(agora.getDate())}${pad(agora.getHours())}${pad(agora.getMinutes())}${pad(agora.getSeconds())}`;
+  const atribuicoes=new Map();
+  const resumos=new Map();
+  grupos.forEach(g=>{
+    const placa=String(g.nome||'').trim();
+    const equipe=indiceEquipes.get(placa.toUpperCase())||{};
+    const itens=pontos.filter(p=>g.itens.includes(chave(p)));
+    const pesoTotal=itens.reduce((s,p)=>s+pesoNum(p.peso),0);
+    const capacidade=equipe.capacidade||0;
+    resumos.set(g,{pedidos:itens.length,peso:pesoTotal,capacidade,ocupacao:capacidade?pesoTotal/capacidade*100:''});
+    itens.forEach(p=>{
+      if(!atribuicoes.has(chave(p))) atribuicoes.set(chave(p),g);
+    });
+  });
+  const totalPedidos=pontos.length;
+  const roteirizados=pontos.filter(p=>atribuicoes.has(chave(p))).length;
+  const pesoImportado=pontos.reduce((s,p)=>s+pesoNum(p.peso),0);
+  const pesoRoteirizado=pontos.filter(p=>atribuicoes.has(chave(p))).reduce((s,p)=>s+pesoNum(p.peso),0);
+  const cabecalho=[
+    'ID FECHAMENTO','DATA DA ROTA','DATA HORA EXPORTACAO',
+    'CODIGO DO CLIENTE','VD','SV','NUMERO DO PEDIDO','CIDADE','PESO PEDIDO KG',
+    'STATUS ROTEIRIZACAO','ROTA / PLACA','MOTORISTA','ORDEM DE ENTREGA',
+    'PEDIDOS NA ROTA','PESO TOTAL ROTA KG','CAPACIDADE VEICULO KG','OCUPACAO VEICULO %',
+    'TOTAL PEDIDOS IMPORTADOS','TOTAL PEDIDOS ROTEIRIZADOS','TOTAL PEDIDOS NAO ROTEIRIZADOS',
+    'PESO TOTAL IMPORTADO KG','PESO TOTAL ROTEIRIZADO KG','PESO NAO ROTEIRIZADO KG'
+  ];
+  const linhas=[cabecalho];
+  pontos.forEach(p=>{
+    const g=atribuicoes.get(chave(p));
+    const resumo=g?resumos.get(g):null;
+    const equipe=g?(indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}):{};
+    const ordem=g&&g.ordem?.includes(chave(p))?g.ordem.indexOf(chave(p))+1:'';
+    linhas.push([
+      idFechamento,info.data,momento,p.cliente,p.vd,p.sv,pedidoTresDigitos(p.pedido),p.cidade,
+      pesoNum(p.peso),g?'Roteirizado':'Não roteirizado',g?g.nome:'',g?(equipe.motorista||g.motorista||''):'',ordem,
+      resumo?resumo.pedidos:'',resumo?resumo.peso:'',resumo?resumo.capacidade:'',
+      resumo&&resumo.ocupacao!==''?resumo.ocupacao.toFixed(2).replace('.',','):'',
+      totalPedidos,roteirizados,totalPedidos-roteirizados,pesoImportado,pesoRoteirizado,pesoImportado-pesoRoteirizado
+    ]);
+  });
+  return '\uFEFF'+linhas.map(l=>l.map(csvEscape).join(';')).join('\r\n');
+}
+
 async function baixarRelatoriosZip(){
   const botao=document.getElementById('gerarCsv');
   if(!workbookAtual || !pontos.length){alert('Selecione a planilha antes de baixar os relatórios.');return;}
@@ -1226,11 +1276,14 @@ async function baixarRelatoriosZip(){
     const {data,dia,hora}=informacoesDataRota();
     const csv=montarRelatorioCsv();
     const excel=prepararExcelRotasSalvas();
+    const historicoCsv=montarHistoricoOperacionalCsv();
     const nomeCsv=`relatorio_rotas_${data}_${hora} ${dia}.csv`;
     const nomeExcel=`roteirizacao_mapa_ROTAS_SALVAS_${data} ${dia}.xlsx`;
+    const nomeHistorico=`historico_operacional_TGR_${data}_${hora} ${dia}.csv`;
     const zip=new JSZip();
     zip.file(nomeCsv,csv);
     zip.file(nomeExcel,excel);
+    zip.file(nomeHistorico,historicoCsv);
     const arquivo=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     const url=URL.createObjectURL(arquivo);
     const a=document.createElement('a');
@@ -1240,7 +1293,7 @@ async function baixarRelatoriosZip(){
     a.click();
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
-    document.getElementById('status').innerHTML=`<b>Relatórios gerados para ${data} (${dia}).</b><br>ZIP com ${nomeCsv} e ${nomeExcel}.`;
+    document.getElementById('status').innerHTML=`<b>Relatórios gerados para ${data} (${dia}).</b><br>ZIP com 3 arquivos: ${nomeCsv}, ${nomeExcel} e ${nomeHistorico}.`;
   }catch(erro){
     console.error(erro);
     alert('Erro ao gerar os relatórios: '+(erro.message||erro));
