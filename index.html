@@ -174,6 +174,7 @@ margin-bottom:8px
 .previewFiltro{display:flex;align-items:center;gap:8px;margin:9px 0 5px;font-size:12px}
 .previewFiltro label{font-weight:bold;color:#444;white-space:nowrap}
 .previewFiltro select{flex:1;min-width:0;padding:7px;border:1px solid #bbb;border-radius:6px;background:#fff;color:#222}
+.previewClienteBtn{background:none;color:#145c9a;border:0;padding:0;font:inherit;font-weight:bold;text-align:left;text-decoration:underline;cursor:pointer}.previewClienteBtn:hover{color:#c00000}.previewLinhaCliente{display:flex;align-items:center;gap:8px}.previewLinhaCliente input{width:16px;height:16px;flex-shrink:0;cursor:pointer}.previewDestaque{background:#fff5df;border-radius:6px}.marcadorFoco{outline:4px solid #ffbf00;outline-offset:2px;box-shadow:0 0 0 7px #ffbf0055!important}
 </style>
 </head>
 <body>
@@ -421,6 +422,36 @@ function atualizarTooltipPlaca(p){
     p.marker.unbindTooltip();
   }
 }
+function focarClientePreview(i){
+  const p=pontos[i];
+  if(!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lon)))return;
+  map.flyTo([Number(p.lat),Number(p.lon)],Math.max(map.getZoom(),16),{duration:0.65});
+  document.querySelectorAll('.previewItem').forEach(el=>el.classList.toggle('previewDestaque',Number(el.dataset.indice)===i));
+  if(p.marker){
+    setTimeout(()=>{
+      if(!p.marker)return;
+      p.marker.openPopup();
+      const el=p.marker.getElement();
+      if(el){el.classList.add('marcadorFoco');setTimeout(()=>el.classList.remove('marcadorFoco'),3500);}
+    },750);
+  }
+}
+function alternarClientePreview(i,marcado){
+  if(modoVisualizacao)return;
+  if(marcado)selecionados.add(i);else selecionados.delete(i);
+  atualizar();
+}
+function prepararEventosPreview(){
+  const lista=document.getElementById('previewLista');
+  lista.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-focar-cliente]');
+    if(btn)focarClientePreview(Number(btn.dataset.focarCliente));
+  });
+  lista.addEventListener('change',e=>{
+    if(e.target.matches('[data-selecionar-cliente]'))alternarClientePreview(Number(e.target.dataset.selecionarCliente),e.target.checked);
+  });
+}
+document.addEventListener('DOMContentLoaded',prepararEventosPreview);
 function atualizarPreviewLista(){
   const total=[...selecionados].reduce((s,i)=>s+pesoNum(pontos[i].peso),0);
   atualizarPreview(total);
@@ -440,9 +471,9 @@ function atualizarPreview(total){
     .sort((a,b)=>ordem==='maior' ? pesoNum(pontos[b].peso)-pesoNum(pontos[a].peso) : ordem==='menor' ? pesoNum(pontos[a].peso)-pesoNum(pontos[b].peso) : pontos[a].seq-pontos[b].seq)
     .map(i=>{
       const p=pontos[i];
-      return `<div class="previewItem">
+      return `<div class="previewItem" data-indice="${i}">
         <div><span class="previewPedido">Pedido ${p.seq}</span></div>
-        <div><b>Cliente:</b> ${p.fantasia || p.cliente}</div>
+        <div class="previewLinhaCliente"><input type="checkbox" data-selecionar-cliente="${i}" checked title="Desmarcar este cliente"><div><b>Cliente:</b> <button type="button" class="previewClienteBtn" data-focar-cliente="${i}" title="Localizar cliente no mapa">${p.fantasia || p.cliente}</button></div></div>
         <div><b>Código:</b> ${p.cliente}</div>
         <div><b>Peso:</b> <span class="previewPeso">${fmt(pesoNum(p.peso))}</span></div>
       </div>`;
