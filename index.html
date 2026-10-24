@@ -230,6 +230,11 @@ margin-bottom:8px
 .modoVisualizacao .barraSuperiorTGR{display:none!important}
 @media(max-width:700px){.barraSuperiorTGR{gap:6px;top:12px}.barraSuperiorTGR .buscaTGR{padding:4px}.barraSuperiorTGR .buscaTGR input{width:112px;max-width:29vw;height:33px}}
 .indicadorCapacidade{margin-top:5px;font-size:11px}
+
+/* Lupa de pesquisa: alinhamento central e visibilidade em telas menores */
+.barraSuperiorTGR .buscaTGR .lupa{position:absolute!important;right:15px!important;top:50%!important;transform:translateY(-50%)!important;display:flex!important;align-items:center;justify-content:center;width:18px;height:18px;color:#555;pointer-events:none;line-height:1!important}
+.barraSuperiorTGR .buscaTGR input{padding-right:34px!important}
+@media(max-width:700px){.barraSuperiorTGR .buscaTGR .lupa{display:flex!important;right:10px!important;width:15px;height:15px}.barraSuperiorTGR .buscaTGR .lupa svg{width:15px;height:15px}.barraSuperiorTGR .buscaTGR input{padding-right:26px!important}}
 </style>
 </head>
 <body>
@@ -316,7 +321,7 @@ O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da ro
 </div>
   <div class="buscaTGR">
     <input id="pesquisaClienteTGR" type="search" inputmode="numeric" autocomplete="off" placeholder="Código do cliente..." aria-label="Buscar localização pelo código do cliente">
-    <span class="lupa">⌕</span>
+    <span class="lupa" aria-hidden="true"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg></span>
     <div id="resultadosBuscaTGR" role="listbox"></div>
   </div>
 </div>
