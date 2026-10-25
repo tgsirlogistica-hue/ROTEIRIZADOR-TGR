@@ -762,7 +762,7 @@ function desenharGrupos(){
     const d=document.createElement('div'); d.className='grupo';
     const acoes=modoVisualizacao
       ? `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button></div>`
-      : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Renomear</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
+      : `<div class="grupoAcoes"><button data-v="${gi}">Ver itens</button><button data-a="${gi}">Adicionar</button><button class="sec" data-r="${gi}">Mudar placa</button><button class="sec" data-e="${gi}">Excluir</button></div>`;
     const motoristaGrupo=String(
       (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
       g.motorista || ''
@@ -871,7 +871,56 @@ function desenharGrupos(){
   });
 
   box.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{const i=+b.dataset.e;if(confirm('Excluir este grupo?')){grupos.splice(i,1);salvarLocal();atualizar()}});
-  box.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{const i=+b.dataset.r;const n=prompt('Novo nome:',grupos[i].nome);if(n&&n.trim()){grupos[i].nome=n.trim();salvarLocal();atualizar()}});
+  box.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>abrirMudancaPlaca(+b.dataset.r));
+}
+
+function abrirMudancaPlaca(indice){
+  if(modoVisualizacao || !grupos[indice])return;
+  const grupo=grupos[indice];
+  const atual=String(grupo.nome||'').trim().toUpperCase();
+  const ocupadas=new Set(grupos.filter((g,i)=>i!==indice).map(g=>String(g.nome||'').trim().toUpperCase()));
+  const opcoes=placasDisponiveis.filter(p=>{
+    const id=String(p).trim().toUpperCase();
+    return id===atual || (!ocupadas.has(id) && !placasIndisponiveis.has(id));
+  });
+  if(!opcoes.length){alert('Nenhuma placa disponível. Confira a aba PLACAS E EQUIPE da planilha.');return;}
+  const fundo=document.createElement('div');
+  fundo.className='modalPlacasFundo';
+  fundo.style.display='flex';
+  const modal=document.createElement('div');
+  modal.className='modalPlacas';
+  const titulo=document.createElement('h3');titulo.textContent='Mudar placa da rota';
+  const subtitulo=document.createElement('p');subtitulo.className='subModal';
+  subtitulo.textContent='Placa atual: '+grupo.nome+'. Selecione uma placa disponível para transferir todos os pedidos desta rota.';
+  const seletor=document.createElement('select');
+  seletor.style.cssText='width:100%;padding:11px;border:1px solid #bbb;border-radius:7px;background:#fff;font-size:14px;box-sizing:border-box';
+  const vazio=document.createElement('option');vazio.value='';vazio.textContent='Selecione a nova placa...';seletor.appendChild(vazio);
+  opcoes.forEach(placa=>{
+    const opt=document.createElement('option');opt.value=placa;
+    const motorista=String((indiceEquipes.get(String(placa).trim().toUpperCase())||{}).motorista||'').trim();
+    opt.textContent=placa+(motorista?' — '+motorista:'')+(String(placa).trim().toUpperCase()===atual?' (atual)':'');
+    seletor.appendChild(opt);
+  });
+  const acoes=document.createElement('div');acoes.className='modalPlacasAcoes';
+  const cancelar=document.createElement('button');cancelar.className='sec';cancelar.textContent='Cancelar';
+  const confirmar=document.createElement('button');confirmar.textContent='Confirmar mudança';
+  const fechar=()=>fundo.remove();
+  cancelar.onclick=fechar;
+  fundo.addEventListener('click',e=>{if(e.target===fundo)fechar();});
+  confirmar.onclick=()=>{
+    const placa=seletor.value.trim();const chaveNova=placa.toUpperCase();
+    if(!placa){alert('Selecione uma placa.');return;}
+    if(!grupos.includes(grupo)){alert('Esta rota não está mais disponível.');fechar();return;}
+    if(chaveNova!==atual && (placasIndisponiveis.has(chaveNova)||grupos.some(g=>g!==grupo&&String(g.nome||'').trim().toUpperCase()===chaveNova))){
+      alert('Esta placa já está em uso ou indisponível. Escolha outra.');return;
+    }
+    if(chaveNova===atual){fechar();return;}
+    grupo.nome=placa;
+    grupo.motorista=String((indiceEquipes.get(chaveNova)||{}).motorista||'').trim();
+    salvarLocal();atualizar();fechar();
+  };
+  acoes.append(cancelar,confirmar);modal.append(titulo,subtitulo,seletor,acoes);fundo.appendChild(modal);document.body.appendChild(fundo);
+  seletor.focus();
 }
 
 function atualizarSelectRotas(){
