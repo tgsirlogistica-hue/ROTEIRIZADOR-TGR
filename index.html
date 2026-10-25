@@ -1519,9 +1519,7 @@ function abrirAuditoriaExportacao(pendencias){
     conteudo.replaceChildren();acoes.replaceChildren();
     const resumo=document.createElement('div');resumo.className='tgrAuditoriaResumo';
     resumo.textContent=`Foram encontrados ${pendencias.length} pedido(s) sem rota definida ou com problema nas coordenadas.`;
-    const explicacao=document.createElement('p');
-    explicacao.textContent='Você pode concluir a exportação normalmente ou identificar os pedidos pendentes antes de decidir. Os pedidos continuarão registrados no histórico operacional.';
-    conteudo.append(resumo,explicacao);
+    conteudo.append(resumo);
     botao('Voltar à roteirização',fecharAuditoriaExportacao,true);
     botao('Identificar pedidos',mostrarLista,true);
     botao('Seguir normalmente',concluir);
