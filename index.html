@@ -287,6 +287,36 @@ margin-bottom:8px
   .barraSuperiorTGR{top:auto!important;bottom:12px!important;left:50%!important}
 }
 .modoVisualizacao #ferramentasSelecao{display:none!important}
+
+/* Refinamento visual 2026: preserva os icones originais e toda a logica. */
+@media(min-width:901px){
+ .panel{left:18px!important;top:16px!important;width:490px!important;padding:20px!important;border-left:5px solid #c00000!important;border-radius:14px!important;box-shadow:0 5px 24px #0002!important}
+ .preview{top:16px!important;right:18px!important;width:385px!important;padding:20px!important;border-radius:14px!important;box-shadow:0 5px 24px #0002!important}
+ #ferramentasSelecao{left:522px!important;top:270px!important;right:auto!important;bottom:auto!important;transform:none!important;gap:6px!important;width:48px!important;max-width:48px!important;padding:6px!important}
+ .barraSuperiorTGR{left:calc(50% + 38px)!important;top:16px!important}
+}
+.panel .box{background:#fff!important;border-color:#e3e5e9!important;border-radius:10px!important}
+.brandHeader{padding-bottom:13px!important;margin-bottom:12px!important}
+.brandTitle h3{font-size:21px!important;line-height:1.14!important}
+.brandTitle .sub{font-size:10px!important;letter-spacing:.5px!important}
+.panel button,.panel label[for=arquivo]{border-radius:8px!important}
+.preview h3{font-size:19px!important;margin-bottom:14px!important}
+.previewResumo{gap:12px!important;margin:0 0 12px!important;border:0!important;padding:0!important}
+.previewResumo>span{flex:1;display:flex;flex-direction:column;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:10px;padding:13px 15px;color:#50565e;font-size:12px}
+.previewResumo>span>span{font-size:23px;font-weight:800;color:#c00000}
+.previewFiltro{padding-top:10px!important;border-top:1px solid #eee}
+.previewVazio{background:#f7f8fa;border-radius:9px;text-align:center;padding:18px 8px!important}
+/* O controle Leaflet de zoom passa a ser inserido na barra das ferramentas por JS. */
+#ferramentasSelecao .leaflet-control-zoom{position:static!important;float:none!important;display:flex!important;flex-direction:column!important;gap:5px!important;margin:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+#ferramentasSelecao .leaflet-control-zoom a{box-sizing:border-box!important;width:36px!important;height:36px!important;line-height:34px!important;border:1px solid #aaa!important;border-radius:8px!important;background:#fff!important;color:#222!important;font-size:22px!important;box-shadow:none!important}
+#ferramentasSelecao .leaflet-control-zoom a:hover{background:#f3f3f3!important}
+#ferramentasSelecao .tgrSeparadorZoom{height:1px;width:29px;background:#dedede;margin:3px auto}
+@media(max-width:900px){
+ #ferramentasSelecao{top:260px!important;right:8px!important;left:auto!important;bottom:auto!important;transform:none!important;flex-direction:column!important;width:45px!important;max-width:45px!important;gap:5px!important}
+ .leaflet-control-zoom{margin:0!important}
+ .previewResumo>span{padding:8px!important}
+}
+
 </style>
 </head>
 <body>
@@ -1707,6 +1737,25 @@ document.addEventListener('DOMContentLoaded', function(){
   document.getElementById('tgrSplashPular').addEventListener('click',fechar);
   // A tela é apenas uma introdução visual; não bloqueia o usuário esperando serviços externos.
   setTimeout(fechar,2800);
+})();
+</script>
+<script>
+// Une zoom e ferramentas em uma unica coluna, sem alterar os icones existentes.
+(function unirZoomFerramentasTGR(){
+ function mover(){
+   const barra=document.getElementById('ferramentasSelecao');
+   const zoom=document.querySelector('.leaflet-control-zoom');
+   if(!barra||!zoom||barra.contains(zoom))return;
+   const separador=document.createElement('div');
+   separador.className='tgrSeparadorZoom';
+   separador.setAttribute('aria-hidden','true');
+   barra.appendChild(separador);
+   barra.appendChild(zoom);
+   // Evita que o clique no zoom acione a selecao de clientes no mapa.
+   if(typeof L!=='undefined'&&L.DomEvent){L.DomEvent.disableClickPropagation(zoom);L.DomEvent.disableScrollPropagation(zoom);}
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mover);
+ else mover();
 })();
 </script>
 </body>
