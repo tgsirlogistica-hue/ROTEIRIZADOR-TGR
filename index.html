@@ -317,6 +317,17 @@ margin-bottom:8px
  .previewResumo>span{padding:8px!important}
 }
 
+
+/* Refinamento: botoes lado a lado mesmo em painel estreito */
+.tgrArquivoAcoes{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:stretch;gap:6px;width:100%;min-width:0}
+.tgrArquivoAcoes>button{flex:1 1 0!important;min-width:0!important;width:0!important;margin:0!important;padding:9px 4px!important;white-space:nowrap!important;font-size:clamp(8px,0.74vw,11px)!important;letter-spacing:-.25px;line-height:1.2!important}
+@media(max-width:900px){.tgrArquivoAcoes>button{font-size:clamp(8px,1.5vw,11px)!important}}
+.tituloRotas,.tgrPreviewTitulo{display:flex!important;align-items:center;justify-content:center;gap:9px}
+.tgrPreviewTitulo{justify-content:flex-start}
+.tgrIcon{width:19px;height:19px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tgrEmptyState{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;min-height:98px;background:#f7f8fa;border:1px solid #e6e8eb;border-radius:9px;padding:14px 8px;box-sizing:border-box;text-align:center;color:#7b828a;font-size:12px;font-weight:400}
+.tgrIconEmpty{width:38px;height:38px;fill:none;stroke:#9098a1;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#previewLista.previewVazio{padding:0!important;background:transparent!important}
 </style>
 </head>
 <body>
@@ -341,8 +352,8 @@ margin-bottom:8px
   </div>
 </div>
 <input id="file" type="file" accept=".xlsx,.xls" hidden>
-<button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
-<button id="zerarRoteirizacaoBtn" type="button" style="background:#555;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;margin-left:6px">ZERAR ROTEIRIZAÇÃO</button>
+<div class="tgrArquivoAcoes"><button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
+<button id="zerarRoteirizacaoBtn" type="button" style="background:#555;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;margin-left:6px">ZERAR ROTEIRIZAÇÃO</button></div>
 <div id="status" class="small" aria-live="polite"></div>
 
 <div class="box somenteEdicao">
@@ -359,8 +370,8 @@ margin-bottom:8px
 </div>
 
 <div class="box">
-<div class="tituloRotas">ROTAS SALVAS</div>
-<div id="grupos" class="small">Nenhum grupo salvo.</div>
+<div class="tituloRotas"><svg class="tgrIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h1M3 12h1M3 18h1" stroke-width="3" stroke-linecap="round"/></svg><span>ROTAS SALVAS</span></div>
+<div id="grupos" class="small"><div class="tgrEmptyState"><svg class="tgrIconEmpty" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13L4 8Z"/><path d="M7 8V5h10v3M4.5 14H9l1.5 2h3l1.5-2h4.5"/></svg><span>Nenhum grupo salvo.</span></div></div>
 <div class="row">
 <button id="gerarCsv" type="button">BAIXAR RELATÓRIOS (ZIP)</button>
 </div>
@@ -370,13 +381,13 @@ margin-bottom:8px
 </div>
 
 <div class="preview">
-  <h3>Prévia da Seleção</h3>
+  <h3 class="tgrPreviewTitulo"><svg class="tgrIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h1M3 12h1M3 18h1" stroke-width="3" stroke-linecap="round"/></svg><span>Prévia da Seleção</span></h3>
   <div class="previewResumo">
     <span><b>Itens:</b> <span id="prevQtd">0</span></span>
     <span><b>Peso:</b> <span id="prevPeso">0,00</span></span>
   </div>
   <div class="previewFiltro"><label for="filtroPesoPreview">Filtra pedidos:</label><select id="filtroPesoPreview" onchange="atualizarPreviewLista()"><option value="padrao">Ordem dos pedidos</option><option value="maior">Maior para menor</option><option value="menor">Menor para maior</option></select></div>
-  <div id="previewLista" class="previewVazio">Nenhum item selecionado.</div>
+  <div id="previewLista" class="previewVazio"><div class="tgrEmptyState"><svg class="tgrIconEmpty" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="13" height="17" rx="2"/><path d="M9 5V3h7v2M9 11h7M9 15h7"/></svg><span>Nenhum item selecionado.</span></div></div>
 </div>
 
 
@@ -621,7 +632,7 @@ function atualizarPreview(total){
   document.getElementById('prevPeso').textContent=fmt(total);
   if(!selecionados.size){
     lista.className='previewVazio';
-    lista.innerHTML='Nenhum item selecionado.';
+    lista.innerHTML='<div class="tgrEmptyState"><svg class="tgrIconEmpty" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="13" height="17" rx="2"/><path d="M9 5V3h7v2M9 11h7M9 15h7"/></svg><span>Nenhum item selecionado.</span></div>';
     return;
   }
   lista.className='';
@@ -809,7 +820,7 @@ function desenharGrupos(){
       .filter(el=>el.style.display!=='none')
       .map(el=>Number(el.id.replace('itensGrupo_','')))
   );
-  if(!grupos.length){box.innerHTML='Nenhum grupo salvo.';return}
+  if(!grupos.length){box.innerHTML='<div class="tgrEmptyState"><svg class="tgrIconEmpty" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13L4 8Z"/><path d="M7 8V5h10v3M4.5 14H9l1.5 2h3l1.5-2h4.5"/></svg><span>Nenhum grupo salvo.</span></div>';return}
   box.innerHTML='';
   grupos.forEach((g,gi)=>{
     let qtd=0,peso=0;
