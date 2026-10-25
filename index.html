@@ -251,11 +251,11 @@ margin-bottom:8px
 @keyframes tgrCarregar{0%{transform:scaleX(0)}45%{transform:scaleX(.56)}100%{transform:scaleX(1)}}
 @media(prefers-reduced-motion:reduce){.tgrSplashConteudo,.tgrSplashBarra{animation:none}#tgrSplash{transition:none}}
 
-/* Layout lateral: ferramentas | painel de rotas | controles de zoom */
+/* Layout lateral: painel de rotas | ferramentas verticais | zoom */
 @media(min-width:701px){
-  .panel{left:62px!important;top:12px!important}
+  .panel{left:12px!important;top:12px!important}
   #ferramentasSelecao{
-    position:fixed!important;left:9px!important;right:auto!important;
+    position:fixed!important;left:432px!important;right:auto!important;
     top:108px!important;bottom:auto!important;transform:none!important;
     width:44px!important;max-width:44px!important;
     display:flex!important;flex-direction:column!important;
@@ -269,13 +269,13 @@ margin-bottom:8px
     left:calc(100% + 12px)!important;right:auto!important;
     top:50%!important;bottom:auto!important;transform:translateY(-50%)!important;
   }
-  .leaflet-top.leaflet-left{left:484px!important;top:12px!important}
+  .leaflet-top.leaflet-left{left:480px!important;top:12px!important}
   .barraSuperiorTGR{left:calc(50% + 55px)!important;top:12px!important}
 }
 @media(max-width:700px){
-  .panel{left:56px!important;width:calc(100vw - 68px)!important;max-width:410px!important}
+  .panel{left:8px!important;width:calc(100vw - 70px)!important;max-width:410px!important}
   #ferramentasSelecao{
-    position:fixed!important;left:7px!important;right:auto!important;
+    position:fixed!important;left:auto!important;right:8px!important;
     top:108px!important;bottom:auto!important;transform:none!important;
     display:flex!important;flex-direction:column!important;
     gap:5px!important;padding:4px!important;width:42px!important;
