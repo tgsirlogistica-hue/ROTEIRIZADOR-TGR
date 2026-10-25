@@ -348,6 +348,22 @@ margin-bottom:8px
 .row:has(> #nomeGrupo){flex-wrap:nowrap;gap:4px;align-items:stretch}
 .row:has(> #gerarCsv){justify-content:center}
 #gerarCsv{flex:0 1 auto;max-width:100%;font-size:11px;padding:8px 10px;text-align:center}
+
+/* Conferência de pedidos pendentes antes da exportação */
+.tgrAuditoriaFundo{position:fixed;inset:0;z-index:8500;background:rgba(20,25,30,.55);display:none;align-items:center;justify-content:center;padding:18px;box-sizing:border-box}
+.tgrAuditoriaFundo.aberto{display:flex}
+.tgrAuditoriaJanela{width:min(650px,100%);max-height:min(85vh,780px);overflow:auto;background:white;border-radius:14px;box-shadow:0 15px 55px #0005;padding:22px;box-sizing:border-box}
+.tgrAuditoriaJanela h3{color:#b60000;margin:0 0 10px;font-size:20px}
+.tgrAuditoriaJanela p{font-size:13px;color:#444;line-height:1.5}
+.tgrAuditoriaResumo{background:#fff4ed;border:1px solid #f0c5b0;padding:12px;border-radius:9px;font-size:14px;font-weight:bold}
+.tgrAuditoriaAcoes{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}
+.tgrAuditoriaAcoes button{font-size:12px}
+.tgrAuditoriaLista{margin-top:12px;max-height:43vh;overflow:auto;border:1px solid #ddd;border-radius:9px}
+.tgrAuditoriaItem{padding:11px 13px;border-bottom:1px solid #eaeaea;font-size:12px;line-height:1.5}
+.tgrAuditoriaItem:last-child{border:0}
+.tgrAuditoriaItem strong{color:#a50000}
+.tgrAuditoriaItem .motivo{color:#a14a00;font-weight:bold}
+@media(max-width:700px){.tgrAuditoriaJanela{padding:15px}.tgrAuditoriaAcoes button{flex:1 1 100%}}
 </style>
 </head>
 <body>
@@ -411,6 +427,14 @@ margin-bottom:8px
 </div>
 
 
+
+<div id="tgrAuditoriaFundo" class="tgrAuditoriaFundo" role="dialog" aria-modal="true" aria-labelledby="tgrAuditoriaTitulo">
+  <div class="tgrAuditoriaJanela">
+    <h3 id="tgrAuditoriaTitulo">Pedidos não roteirizados</h3>
+    <div id="tgrAuditoriaConteudo"></div>
+    <div id="tgrAuditoriaAcoes" class="tgrAuditoriaAcoes"></div>
+  </div>
+</div>
 <div id="modalPlacasIndisponiveis" class="modalPlacasFundo" aria-hidden="true">
   <div class="modalPlacas">
     <h3>PLACAS INDISPONÍVEIS</h3>
@@ -1460,11 +1484,75 @@ function montarHistoricoOperacionalCsv(){
   return '\uFEFF'+linhas.map(l=>l.map(csvEscape).join(';')).join('\r\n');
 }
 
-async function baixarRelatoriosZip(){
+// Verificação feita sobre a base completa, inclusive registros que não entram no mapa.
+function obterPendenciasExportacao(){
+  const atribuidos=new Set();
+  grupos.forEach(g=>{
+    (g.itens||[]).forEach(k=>atribuidos.add(k));
+  });
+  return pedidosImportadosHistorico.map((p,i)=>{
+    const coord=Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0&&Math.abs(p.lat)<=90&&Math.abs(p.lon)<=180;
+    const emRota=coord&&atribuidos.has(chave(p));
+    if(emRota)return null;
+    return {p,indice:i,motivo:!coord?'Coordenadas ausentes ou inválidas':'Pedido não incluído em nenhuma rota'};
+  }).filter(Boolean);
+}
+function fecharAuditoriaExportacao(){
+  document.getElementById('tgrAuditoriaFundo').classList.remove('aberto');
+}
+function abrirAuditoriaExportacao(pendencias){
+  const fundo=document.getElementById('tgrAuditoriaFundo');
+  const conteudo=document.getElementById('tgrAuditoriaConteudo');
+  const acoes=document.getElementById('tgrAuditoriaAcoes');
+  const titulo=document.getElementById('tgrAuditoriaTitulo');
+  fundo.classList.add('aberto');
+  function botao(rotulo,acao,secundario=false){
+    const b=document.createElement('button');
+    b.type='button';b.textContent=rotulo;
+    if(secundario)b.className='sec';
+    b.addEventListener('click',acao);
+    acoes.appendChild(b);
+  }
+  function concluir(){fecharAuditoriaExportacao();baixarRelatoriosZip(true);}
+  function mostrarResumo(){
+    titulo.textContent='Atenção: pedidos não roteirizados';
+    conteudo.replaceChildren();acoes.replaceChildren();
+    const resumo=document.createElement('div');resumo.className='tgrAuditoriaResumo';
+    resumo.textContent=`Foram encontrados ${pendencias.length} pedido(s) sem rota definida ou com problema nas coordenadas.`;
+    const explicacao=document.createElement('p');
+    explicacao.textContent='Você pode concluir a exportação normalmente ou identificar os pedidos pendentes antes de decidir. Os pedidos continuarão registrados no histórico operacional.';
+    conteudo.append(resumo,explicacao);
+    botao('Voltar à roteirização',fecharAuditoriaExportacao,true);
+    botao('Identificar pedidos',mostrarLista,true);
+    botao('Seguir normalmente',concluir);
+  }
+  function mostrarLista(){
+    titulo.textContent=`Pedidos pendentes (${pendencias.length})`;
+    conteudo.replaceChildren();acoes.replaceChildren();
+    const explicacao=document.createElement('p');
+    explicacao.textContent='Confira os clientes e pedidos abaixo. Para corrigir, retorne à roteirização e ajuste a planilha ou inclua os pedidos em uma rota.';
+    const lista=document.createElement('div');lista.className='tgrAuditoriaLista';
+    pendencias.forEach(({p,motivo})=>{
+      const item=document.createElement('div');item.className='tgrAuditoriaItem';
+      const tituloItem=document.createElement('strong');
+      tituloItem.textContent=`Pedido ${p.pedido||'não informado'} — Cliente ${p.cliente||'não informado'}`;
+      const detalhes=document.createElement('div');
+      detalhes.textContent=[p.fantasia,p.cidade].filter(Boolean).join(' · ');
+      const falha=document.createElement('div');falha.className='motivo';falha.textContent=motivo;
+      item.append(tituloItem,detalhes,falha);lista.appendChild(item);
+    });
+    conteudo.append(explicacao,lista);
+    botao('Voltar à roteirização',fecharAuditoriaExportacao,true);
+    botao('Concluir mesmo assim',concluir);
+  }
+  mostrarResumo();
+}
+async function baixarRelatoriosZip(ignorarAviso=false){
   const botao=document.getElementById('gerarCsv');
   if(!workbookAtual || !pontos.length){alert('Selecione a planilha antes de baixar os relatórios.');return;}
   if(!grupos.length){alert('Crie pelo menos uma rota antes de baixar os relatórios.');return;}
   if(typeof JSZip==='undefined'){alert('Não foi possível carregar o gerador ZIP. Verifique a conexão com a internet e tente novamente.');return;}
+  if(!ignorarAviso){const pendencias=obterPendenciasExportacao();if(pendencias.length){abrirAuditoriaExportacao(pendencias);return;}}
   botao.disabled=true;
   const textoOriginal=botao.textContent;
   botao.textContent='PREPARANDO ZIP...';
@@ -1498,7 +1586,7 @@ async function baixarRelatoriosZip(){
     botao.textContent=textoOriginal;
   }
 }
-document.getElementById('gerarCsv').addEventListener('click',baixarRelatoriosZip);
+document.getElementById('gerarCsv').addEventListener('click',()=>baixarRelatoriosZip());
 
 
 function ajustarPontosSobrepostos(lista){
