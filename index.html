@@ -460,6 +460,7 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
 
 let layer=L.layerGroup().addTo(map);
 let pontos=[];
+let pedidosImportadosHistorico=[]; // inclui pedidos sem coordenadas, sem criar marcadores
 let selecionados=new Set();
 let grupos=[];
 let indiceEquipes=new Map();
@@ -1409,51 +1410,51 @@ function montarRelatorioCsv(){
 
 }
 
-// Terceiro relatório: base analítica completa (uma linha por pedido importado).
-// Não altera os dois relatórios existentes nem os dados usados pelo GPS.
+// Histórico analítico: uma linha por pedido, sem totais agregados repetidos.
+// O identificador é estável para a mesma base de pedidos e data de rota,
+// inclusive quando o operador exporta novamente o mesmo fechamento.
+function idFechamentoHistorico(dataRota){
+  const identidade=pedidosImportadosHistorico.map(p=>[
+    p.pedido,p.cliente,p.peso,p.lat,p.lon
+  ].join('|')).sort().join('\n');
+  const texto=dataRota+'|'+identidade;
+  let hash=2166136261;
+  for(let i=0;i<texto.length;i++){
+    hash^=texto.charCodeAt(i);
+    hash=Math.imul(hash,16777619);
+  }
+  return 'TGR-'+dataRota+'-'+(hash>>>0).toString(16).padStart(8,'0').toUpperCase();
+}
 function montarHistoricoOperacionalCsv(){
   const info=informacoesDataRota();
   const agora=new Date();
   const pad=n=>String(n).padStart(2,'0');
   const momento=`${agora.getFullYear()}-${pad(agora.getMonth()+1)}-${pad(agora.getDate())} ${pad(agora.getHours())}:${pad(agora.getMinutes())}:${pad(agora.getSeconds())}`;
-  const idFechamento=`${info.data}_${agora.getFullYear()}${pad(agora.getMonth()+1)}${pad(agora.getDate())}${pad(agora.getHours())}${pad(agora.getMinutes())}${pad(agora.getSeconds())}`;
+  const idFechamento=idFechamentoHistorico(info.data);
   const atribuicoes=new Map();
-  const resumos=new Map();
   grupos.forEach(g=>{
-    const placa=String(g.nome||'').trim();
-    const equipe=indiceEquipes.get(placa.toUpperCase())||{};
-    const itens=pontos.filter(p=>g.itens.includes(chave(p)));
-    const pesoTotal=itens.reduce((s,p)=>s+pesoNum(p.peso),0);
-    const capacidade=equipe.capacidade||0;
-    resumos.set(g,{pedidos:itens.length,peso:pesoTotal,capacidade,ocupacao:capacidade?pesoTotal/capacidade*100:''});
-    itens.forEach(p=>{
+    pontos.filter(p=>g.itens.includes(chave(p))).forEach(p=>{
       if(!atribuicoes.has(chave(p))) atribuicoes.set(chave(p),g);
     });
   });
-  const totalPedidos=pontos.length;
-  const roteirizados=pontos.filter(p=>atribuicoes.has(chave(p))).length;
-  const pesoImportado=pontos.reduce((s,p)=>s+pesoNum(p.peso),0);
-  const pesoRoteirizado=pontos.filter(p=>atribuicoes.has(chave(p))).reduce((s,p)=>s+pesoNum(p.peso),0);
   const cabecalho=[
     'ID FECHAMENTO','DATA DA ROTA','DATA HORA EXPORTACAO',
     'CODIGO DO CLIENTE','VD','SV','NUMERO DO PEDIDO','CIDADE','PESO PEDIDO KG',
     'STATUS ROTEIRIZACAO','ROTA / PLACA','MOTORISTA','ORDEM DE ENTREGA',
-    'PEDIDOS NA ROTA','PESO TOTAL ROTA KG','CAPACIDADE VEICULO KG','OCUPACAO VEICULO %',
-    'TOTAL PEDIDOS IMPORTADOS','TOTAL PEDIDOS ROTEIRIZADOS','TOTAL PEDIDOS NAO ROTEIRIZADOS',
-    'PESO TOTAL IMPORTADO KG','PESO TOTAL ROTEIRIZADO KG','PESO NAO ROTEIRIZADO KG'
+    'LATITUDE','LONGITUDE','OBSERVACAO'
   ];
   const linhas=[cabecalho];
-  pontos.forEach(p=>{
-    const g=atribuicoes.get(chave(p));
-    const resumo=g?resumos.get(g):null;
+  pedidosImportadosHistorico.forEach(p=>{
+    const coordenadasValidas=Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0;
+    const g=coordenadasValidas?atribuicoes.get(chave(p)):null;
     const equipe=g?(indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}):{};
     const ordem=g&&g.ordem?.includes(chave(p))?g.ordem.indexOf(chave(p))+1:'';
     linhas.push([
       idFechamento,info.data,momento,p.cliente,p.vd,p.sv,pedidoTresDigitos(p.pedido),p.cidade,
-      pesoNum(p.peso),g?'Roteirizado':'Não roteirizado',g?g.nome:'',g?(equipe.motorista||g.motorista||''):'',ordem,
-      resumo?resumo.pedidos:'',resumo?resumo.peso:'',resumo?resumo.capacidade:'',
-      resumo&&resumo.ocupacao!==''?resumo.ocupacao.toFixed(2).replace('.',','):'',
-      totalPedidos,roteirizados,totalPedidos-roteirizados,pesoImportado,pesoRoteirizado,pesoImportado-pesoRoteirizado
+      pesoNum(p.peso),!coordenadasValidas?'Sem coordenadas':g?'Roteirizado':'Não roteirizado',
+      g?g.nome:'',g?(equipe.motorista||g.motorista||''):'',ordem,
+      coordenadasValidas?coordenadaCsv(p.lat):'',coordenadasValidas?coordenadaCsv(p.lon):'',
+      !coordenadasValidas?'Pedido importado sem coordenadas válidas':''
     ]);
   });
   return '\uFEFF'+linhas.map(l=>l.map(csvEscape).join(';')).join('\r\n');
@@ -1549,6 +1550,7 @@ function popupMesmoLocal(p){
 document.getElementById('file').addEventListener('change',async e=>{
   const f=e.target.files[0]; if(!f)return;
   try{
+    pedidosImportadosHistorico=[];
     const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
     workbookAtual=wb;
     nomeArquivoAtual=f.name||'roteirizacao.xlsx';
@@ -1644,7 +1646,7 @@ document.getElementById('file').addEventListener('change',async e=>{
       alert(`Atenção! Atualize a base de cliente. Clientes: ${clientesSemCoordenadas.join(', ')} estão sem coordenadas`);
     }
 
-    pontos=rows.map(r=>({
+    pedidosImportadosHistorico=rows.map(r=>({
 
       seq:numeroPedidoRota(r),
       pedido:normalizarPedido(r.PEDIDO),
@@ -1658,8 +1660,11 @@ document.getElementById('file').addEventListener('change',async e=>{
       sv:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).sv || '',
       cidade:(indiceClientes.get(String(r.CLIENTE??'').trim())||{}).cidade || '',
       razao:String(r['RAZÃO SOCIAL'] ?? r['RAZAO SOCIAL'] ?? r['RAZÃO'] ?? r['RAZAO'] ?? (indiceClientes.get(String(r.CLIENTE??'').trim())||{}).razao ?? '')
-    })).filter(p=>Number.isFinite(p.seq)&&p.seq>0&&p.cliente.trim()!==''&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0).sort((a,b)=>a.seq-b.seq);
+    })).filter(p=>Number.isFinite(p.seq)&&p.seq>0&&p.cliente.trim()!=='').sort((a,b)=>a.seq-b.seq);
 
+    // Somente pedidos georreferenciados entram no mapa e na roteirização.
+    // A base do histórico preserva também os pedidos sem coordenadas.
+    pontos=pedidosImportadosHistorico.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat!==0&&p.lon!==0);
     pontos=ajustarPontosSobrepostos(pontos);
     agendarSequenciaAutomaticaTGR();
 
