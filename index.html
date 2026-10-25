@@ -276,7 +276,7 @@ margin-bottom:8px
 <input id="file" type="file" accept=".xlsx,.xls" hidden>
 <button onclick="document.getElementById('file').click()">SELECIONAR PLANILHA</button>
 <button id="zerarRoteirizacaoBtn" type="button" style="background:#555;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;margin-left:6px">ZERAR ROTEIRIZAÇÃO</button>
-<div id="status" class="small">Selecione o Excel. Aba usada: <b>ROTA</b>.</div>
+<div id="status" class="small" aria-live="polite"></div>
 
 <div class="box somenteEdicao">
 <div><b>Selecionadas:</b> <span id="qtd">0</span></div>
@@ -288,7 +288,7 @@ margin-bottom:8px
 </select>
 <button id="salvarGrupo">SALVAR ROTA</button>
 </div>
-<div class="small">Clique nos marcadores para selecionar/desmarcar clientes ou use as ferramentas de seleção na lateral direita do mapa.</div>
+
 </div>
 
 <div class="box">
@@ -298,9 +298,7 @@ margin-bottom:8px
 <button id="gerarCsv" type="button">BAIXAR RELATÓRIOS (ZIP)</button>
 </div>
 <div id="modoHistorico" class="small" style="display:none;margin-top:8px"><b>Modo visualização:</b> esta roteirização foi restaurada do arquivo salvo. Zoom, mapa, placas, cidades e informações dos clientes continuam disponíveis.</div>
-<div class="small">
-O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da rota é o dia seguinte quando o download ocorrer a partir das 18h. O CSV será gerado com: Código do cliente, VD, SV, Número do pedido, Peso, Rota, Motorista, Cidade, Latitude, Longitude, Link GPS e Status do pedido. Pedidos sem rota serão listados ao final como Não roteirizado.
-</div>
+
 </div>
 </div>
 
@@ -310,7 +308,7 @@ O ZIP terá o relatório CSV e a planilha Excel com as rotas salvas. O dia da ro
     <span><b>Itens:</b> <span id="prevQtd">0</span></span>
     <span><b>Peso:</b> <span id="prevPeso">0,00</span></span>
   </div>
-  <div class="previewFiltro"><label for="filtroPesoPreview">Ordenar por peso:</label><select id="filtroPesoPreview" onchange="atualizarPreviewLista()"><option value="padrao">Ordem dos pedidos</option><option value="maior">Maior para menor</option><option value="menor">Menor para maior</option></select></div>
+  <div class="previewFiltro"><label for="filtroPesoPreview">Filtra pedidos:</label><select id="filtroPesoPreview" onchange="atualizarPreviewLista()"><option value="padrao">Ordem dos pedidos</option><option value="maior">Maior para menor</option><option value="menor">Menor para maior</option></select></div>
   <div id="previewLista" class="previewVazio">Nenhum item selecionado.</div>
 </div>
 
@@ -1537,7 +1535,7 @@ document.getElementById('file').addEventListener('change',async e=>{
     });
     map.fitBounds(L.latLngBounds(pontos.map(p=>[p.mapLat,p.mapLon])).pad(.12));
     if(!modoVisualizacao){
-      document.getElementById('status').innerHTML=`<b>${pontos.length} entregas carregadas.</b><br>Pesos carregados da coluna PESO. Crie grupos clicando nos clientes.`;
+      document.getElementById('status').innerHTML=`<b>${pontos.length} entregas carregadas.</b><br>`;
     }
     atualizar();
   }catch(err){document.getElementById('status').textContent='Erro: '+err.message}
