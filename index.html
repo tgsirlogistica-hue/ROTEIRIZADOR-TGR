@@ -1085,6 +1085,7 @@ function atualizarSelectRotas(){
       option.classList.add('placaIndisponivel');
     }else if(usada){
       option.textContent=`${placaMotorista} — já utilizada`;
+      option.disabled=true;
       option.classList.add('placaUsada');
     }else{
       option.textContent=placaMotorista;
@@ -1178,6 +1179,7 @@ document.getElementById('salvarGrupo').onclick=()=>{
   const nome=document.getElementById('nomeGrupo').value.trim();
   if(!nome)return alert('Selecione a placa do veículo para salvar a rota.');
   if(placasIndisponiveis.has(nome.toUpperCase()))return alert('Esta placa está marcada como indisponível hoje. Se necessário, altere a disponibilidade na lista de placas.');
+  if(grupos.some(g=>String(g.nome||'').trim().toUpperCase()===nome.toUpperCase()))return alert('Esta placa já está utilizada em outra rota. Selecione uma placa disponível.');
   if(!selecionados.size)return alert('Selecione pelo menos um cliente.');
   const itens=[...selecionados].map(i=>chave(pontos[i]));
   grupos.forEach(g=>g.itens=g.itens.filter(k=>!itens.includes(k)));
