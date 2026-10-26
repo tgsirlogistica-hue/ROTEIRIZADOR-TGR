@@ -372,6 +372,37 @@ margin-bottom:8px
 @media (min-width:701px) and (max-width:900px){
   .barraSuperiorTGR{left:auto!important;right:334px!important;transform:none!important;top:12px!important;bottom:auto!important}
 }
+
+/* Prévia da Seleção: redução de aproximadamente 2 cm (76 px) e borda vermelha à esquerda. */
+.preview{
+  border-left:5px solid #c00000!important;
+  min-width:0!important;
+  overflow-x:hidden!important;
+}
+.preview *, .preview *::before, .preview *::after{box-sizing:border-box}
+.previewResumo{min-width:0!important;gap:6px!important}
+.previewResumo>span.tgrMetrica{min-width:0!important;padding:7px 6px!important;gap:5px!important}
+.previewResumo .tgrMetricaTexto{min-width:0!important}
+.previewResumo .tgrMetricaTexto b{font-size:10px!important;white-space:normal;overflow-wrap:anywhere}
+.previewResumo .tgrMetricaTexto>span{font-size:16px!important;overflow-wrap:anywhere}
+.previewFiltro{min-width:0!important;gap:5px!important;flex-wrap:wrap}
+.previewFiltro select{min-width:0!important;width:100%;max-width:100%;flex:1 1 125px}
+.previewItem,.previewLinhaCliente{min-width:0;overflow-wrap:anywhere}
+.previewLinhaCliente{flex-wrap:wrap}
+.previewClienteBtn{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.previewRemoverBtn{flex-shrink:0}
+@media(min-width:901px){
+  .preview{width:309px!important;padding:15px!important}
+  .barraSuperiorTGR{right:344px!important}
+}
+@media(min-width:701px) and (max-width:900px){
+  .preview{width:234px!important;padding:11px!important}
+  .barraSuperiorTGR{right:258px!important}
+}
+@media(max-width:700px){
+  .preview{width:min(309px,calc(100vw - 16px))!important;padding:11px!important}
+}
+
 </style>
 </head>
 <body>
