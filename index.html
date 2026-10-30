@@ -444,7 +444,6 @@ margin-bottom:8px
 
 </div>
 
-<div class="box somenteEdicao" id="historicoSugestoesBox"><b>HISTÓRICO DE ROTAS</b><div class="small">Consulte o ZIP do GitHub ou selecione um ZIP local para receber sugestões de placas e clientes.</div><div class="row"><input id="historicoZipUrl" placeholder="URL do ZIP no GitHub (raw ou Pages)" style="width:100%;flex-basis:100%"></div><div class="row"><button id="carregarHistoricoGithub" type="button">CONSULTAR GITHUB</button><label for="historicoZipLocal" style="cursor:pointer;background:#555;color:white;border-radius:7px;padding:9px 11px;font-size:11px;font-weight:bold">ABRIR ZIP LOCAL</label><input type="file" id="historicoZipLocal" accept=".zip" style="display:none"></div><div id="historicoSugestoesStatus" class="small" role="status">Histórico não carregado.</div><div id="historicoSugestoesLista"></div></div>
 <div class="box">
 <div class="tituloRotas"><svg class="tgrIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h1M3 12h1M3 18h1" stroke-width="3" stroke-linecap="round"/></svg><span>ROTAS SALVAS</span></div>
 <div id="grupos" class="small"><div class="tgrEmptyState"><svg class="tgrIconEmpty" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13L4 8Z"/><path d="M7 8V5h10v3M4.5 14H9l1.5 2h3l1.5-2h4.5"/></svg><span>Nenhum grupo salvo.</span></div></div>
@@ -1675,6 +1674,102 @@ function popupMesmoLocal(p){
     <b>${mesmos.length} pedidos neste mesmo local:</b>${itens}`;
 }
 
+
+// Planejamento automatico: historico no GitHub, sem alterar a interface existente.
+const TGR_HIST_URL='https://raw.githubusercontent.com/tgsirlogistica-hue/ROTEIRIZADOR-TGR/main/3-ROTEIRIZA%C3%87%C3%95ES-REALIZADAS.zip';
+let tgrHistoricoCache=null;
+function tgrNorm(v){return String(v??'').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function tgrClienteDaChave(k){return String(k||'').split('|')[0].trim();}
+async function tgrCarregarHistorico(){
+ if(tgrHistoricoCache)return tgrHistoricoCache;
+ if(typeof JSZip==='undefined'||typeof XLSX==='undefined')throw new Error('Bibliotecas de ZIP/Excel indisponiveis.');
+ const resposta=await fetch(TGR_HIST_URL+'?v='+Date.now(),{cache:'no-store'});
+ if(!resposta.ok)throw new Error('Historico do GitHub indisponivel (HTTP '+resposta.status+').');
+ const zip=await JSZip.loadAsync(await resposta.arrayBuffer());
+ const arquivos=Object.values(zip.files).filter(f=>!f.dir&&/\.xlsx$/i.test(f.name)&&!f.name.split('/').pop().startsWith('~$'));
+ if(!arquivos.length)throw new Error('O ZIP nao contem planilhas Excel.');
+ const registros=[];let lidos=0;
+ for(const arq of arquivos){
+  try{
+   const wb=XLSX.read(await arq.async('arraybuffer'),{type:'array'});
+   const aba=wb.SheetNames.find(n=>tgrNorm(n)==='ROTAS_SALVAS');if(!aba)continue;
+   const linhas=XLSX.utils.sheet_to_json(wb.Sheets[aba],{defval:''});
+   const arquivoId=arq.name;
+   for(const r of linhas){
+    const placa=tgrNorm(r.PLACA),cliente=tgrClienteDaChave(r.CHAVE_ITEM);
+    if(tgrNorm(r.TIPO)!=='ROTA'||!placa||!cliente)continue;
+    registros.push({arquivo:arquivoId,placa,cliente});
+   }
+   lidos++;
+  }catch(e){console.warn('Historico ignorado:',arq.name,e)}
+ }
+ if(!registros.length)throw new Error('Nenhuma rota valida encontrada na aba ROTAS_SALVAS.');
+ tgrHistoricoCache={registros,lidos};return tgrHistoricoCache;
+}
+function tgrDist(a,b){const la=(Number(a.lat)-Number(b.lat))*111;const lo=(Number(a.lon)-Number(b.lon))*109;return Math.hypot(la,lo)}
+function tgrPlanejar(historico){
+ const veiculos=[...indiceEquipes.entries()].map(([placa,d])=>({placa,cap:Number(d.capacidade)||0,motorista:d.motorista||'',itens:[],peso:0,clientes:new Set()}))
+  .filter(v=>v.cap>0&&!placasIndisponiveis.has(v.placa));
+ if(!veiculos.length)throw new Error('Nenhum veiculo disponivel com capacidade cadastrada.');
+ const atual=pontos.map((p,i)=>({p,i,peso:pesoNum(p.peso),cliente:tgrNorm(p.cliente),cidade:tgrNorm(p.cidade)}));
+ if(atual.some(x=>x.peso<=0))throw new Error('Ha pedidos com peso ausente ou zero. Confira a planilha antes de automatizar.');
+ const maxCap=Math.max(...veiculos.map(v=>v.cap));
+ const impossiveis=atual.filter(x=>x.peso>maxCap);
+ const votos=new Map(),cooc=new Map();
+ const porArquivoPlaca=new Map();
+ for(const r of historico.registros){
+  const key=r.arquivo+'|'+r.placa;
+  if(!porArquivoPlaca.has(key))porArquivoPlaca.set(key,new Set());
+  porArquivoPlaca.get(key).add(tgrNorm(r.cliente));
+  const k=tgrNorm(r.cliente)+'|'+r.placa;votos.set(k,(votos.get(k)||0)+1);
+ }
+ for(const conjunto of porArquivoPlaca.values()){
+  const arr=[...conjunto];
+  for(const a of arr){if(!cooc.has(a))cooc.set(a,new Map());const m=cooc.get(a);for(const b of arr){if(a!==b)m.set(b,(m.get(b)||0)+1)}}
+ }
+ // Primeiro clientes com maiores cargas e historico mais especifico.
+ atual.sort((a,b)=>b.peso-a.peso || (cooc.get(b.cliente)?.size||0)-(cooc.get(a.cliente)?.size||0));
+ const naoAlocados=[];
+ for(const x of atual){
+  let melhor=null,pontuacao=-Infinity;
+  for(const v of veiculos){
+   if(v.peso+x.peso>v.cap+0.001)continue;
+   const hist=votos.get(x.cliente+'|'+v.placa)||0;
+   let afinidade=0,mesmaCidade=0,distancia=Infinity;
+   for(const y of v.itens){
+    afinidade+=(cooc.get(x.cliente)?.get(y.cliente)||0);
+    if(x.cidade&&x.cidade===y.cidade)mesmaCidade++;
+    distancia=Math.min(distancia,tgrDist(x.p,y.p));
+   }
+   // Priorizacao historica e geografica, com penalidade para abrir um novo veiculo.
+   const score=hist*12+Math.min(afinidade,25)*5+mesmaCidade*9+(v.itens.length?Math.max(0,12-Math.min(distancia,100)/4):0)-(v.itens.length?0:13) -(v.cap-v.peso-x.peso)/Math.max(v.cap,1)*2;
+   if(score>pontuacao){pontuacao=score;melhor=v}
+  }
+  if(melhor){melhor.itens.push(x);melhor.peso+=x.peso;melhor.clientes.add(x.cliente)}else naoAlocados.push(x);
+ }
+ return {veiculos:veiculos.filter(v=>v.itens.length),naoAlocados,impossiveis};
+}
+async function tgrPerguntarRoteirizacaoAutomatica(){
+ if(modoVisualizacao||!pontos.length)return;
+ if(!confirm('Deseja gerar a roteirizacao automaticamente usando o historico do GitHub e a capacidade dos veiculos?\n\nOK = gerar rotas automaticamente\nCancelar = continuar manualmente'))return;
+ if(grupos.length&&!confirm('As rotas atuais serao substituidas pela proposta automatica. Deseja continuar?'))return;
+ const status=document.getElementById('status');status.textContent='Consultando historico no GitHub e calculando rotas...';
+ try{
+  const hist=await tgrCarregarHistorico();const plano=tgrPlanejar(hist);
+  const resumo=plano.veiculos.map(v=>`${v.placa}: ${v.itens.length} entregas, ${fmt(v.peso)} / ${fmt(v.cap)} kg`).join('\n');
+  const aviso=plano.naoAlocados.length?`\n\nATENCAO: ${plano.naoAlocados.length} pedido(s) nao puderam ser alocados. Permanecerao pendentes.`:'';
+  if(!plano.veiculos.length)throw new Error('Nao foi possivel montar nenhuma rota com as capacidades disponiveis.');
+  if(!confirm(`PROPOSTA DE ROTEIRIZACAO\nHistorico: ${hist.lidos} planilhas\nRotas: ${plano.veiculos.length}\n\n${resumo}${aviso}\n\nAplicar estas rotas ao mapa para conferencia?`)){
+   status.textContent='Proposta descartada. Roteirizacao manual mantida.';return;
+  }
+  grupos=[];
+  for(const v of plano.veiculos){grupos.push({nome:v.placa,motorista:v.motorista,cor:proximaCor(),itens:[...new Set(v.itens.map(x=>chave(x.p)))]})}
+  selecionados.clear();salvarLocal();atualizar();atualizarSelectRotas();
+  status.innerHTML=`<b>${plano.veiculos.length} rotas geradas automaticamente.</b><br>${plano.naoAlocados.length} pedidos pendentes. Confira todas as rotas e ajuste antes de exportar.`;
+  if(plano.naoAlocados.length)alert(`${plano.naoAlocados.length} pedido(s) ficaram pendentes por falta de capacidade. Confira os pedidos vermelhos no mapa.`);
+ }catch(e){console.error(e);status.textContent='Roteirizacao automatica nao realizada: '+e.message;alert('Nao foi possivel gerar automaticamente: '+e.message+'\nA roteirizacao manual permanece disponivel.');}
+}
+
 document.getElementById('file').addEventListener('change',async e=>{
   const f=e.target.files[0]; if(!f)return;
   try{
@@ -1818,6 +1913,7 @@ document.getElementById('file').addEventListener('change',async e=>{
       document.getElementById('status').innerHTML=`<b>${pontos.length} entregas carregadas.</b><br>`;
     }
     atualizar();
+    if(!tinhaRotasSalvas)await tgrPerguntarRoteirizacaoAutomatica();
   }catch(err){document.getElementById('status').textContent='Erro: '+err.message}
 });
 carregarLocal(); desenharGrupos();
@@ -1920,86 +2016,6 @@ document.addEventListener('DOMContentLoaded', function(){
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mover);
  else mover();
-})();
-</script>
-<script>
-/* Sugestões históricas opcionais; nunca altera rotas sem confirmação. */
-(function(){
-const $=id=>document.getElementById(id);
-let base=[],dias=0;
-const status=t=>{$('historicoSugestoesStatus').textContent=t};
-const clienteId=k=>String(k||'').split('|')[0].trim();
-const limpar=t=>String(t||'').trim().toUpperCase();
-const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-$('historicoZipUrl').value=localStorage.getItem('tgrHistoricoZipUrl')||'';
-async function processarZip(buffer){
-  if(typeof JSZip==='undefined'||typeof XLSX==='undefined')throw Error('Bibliotecas JSZip ou XLSX não carregadas.');
-  const zip=await JSZip.loadAsync(buffer);
-  const nomes=Object.keys(zip.files).filter(n=>/\.xlsx$/i.test(n)&&!zip.files[n].dir&&!n.split('/').pop().startsWith('~$'));
-  if(!nomes.length)throw Error('Nenhuma planilha XLSX encontrada no ZIP.');
-  const registros=new Map(),datas=new Set();let validos=0;
-  for(const nome of nomes){
-    const bytes=await zip.files[nome].async('uint8array');
-    const wb=XLSX.read(bytes,{type:'array'});
-    const sheet=wb.Sheets['ROTAS_SALVAS'];if(!sheet)continue;
-    const rows=XLSX.utils.sheet_to_json(sheet,{defval:''});
-    const diaArquivo=(nome.match(/20\d{2}-\d{2}-\d{2}/)||[])[0]||nome;
-    for(const r of rows){
-      if(limpar(r.TIPO)!=='ROTA')continue;
-      const placa=limpar(r.PLACA),cliente=clienteId(r.CHAVE_ITEM);
-      if(!placa||!cliente)continue;
-      const dia=diaArquivo;
-      // Um mesmo cliente/placa/dia conta uma única vez, inclusive em arquivos duplicados.
-      const id=dia+'|'+placa+'|'+cliente;
-      if(!registros.has(id)){registros.set(id,{dia,placa,cliente});validos++}datas.add(dia);
-    }
-  }
-  base=[...registros.values()];dias=datas.size;
-  if(!base.length)throw Error('Não foram encontrados registros válidos na aba ROTAS_SALVAS.');
-  status(`${nomes.length} planilhas; ${dias} dias; ${validos} associações únicas. Sugestões baseadas em frequência histórica.`);
-  sugerir();
-}
-function sugerir(){
- const lista=$('historicoSugestoesLista');lista.innerHTML='';
- if(!base.length)return;
- if(!pontos.length){lista.textContent='Importe a planilha diária para comparar os clientes.';return}
- const livres=placasDisponiveis.filter(p=>!placasIndisponiveis.has(limpar(p))&&!grupos.some(g=>limpar(g.nome)===limpar(p)));
- const candidatos=pontos.map((p,i)=>({i,cliente:clienteId(p.cliente)})).filter(o=>!grupoDe(pontos[o.i]));
- const counts=new Map();for(const r of base){const key=r.placa+'|'+r.cliente;counts.set(key,(counts.get(key)||0)+1)}
- const sugestoes=livres.map(placa=>{
-  const encontrados=candidatos.map(o=>({...o,freq:counts.get(limpar(placa)+'|'+o.cliente)||0})).filter(o=>o.freq>0).sort((a,b)=>b.freq-a.freq);
-  return {placa,encontrados,score:encontrados.reduce((s,o)=>s+o.freq,0)};
- }).filter(o=>o.encontrados.length).sort((a,b)=>b.score-a.score);
- if(!sugestoes.length){lista.textContent='Nenhuma correspondência encontrada para as placas livres e os clientes atuais.';return}
- const titulo=document.createElement('div');titulo.className='small';titulo.textContent='Sugestões indicativas, sem considerar capacidade do caminhão ou desempenho da viagem. Confira o peso antes de salvar.';lista.appendChild(titulo);
- for(const sug of sugestoes.slice(0,12)){
-  const div=document.createElement('div');div.style.cssText='border-top:1px solid #ddd;margin-top:9px;padding-top:8px;font-size:12px';
-  const peso=sug.encontrados.reduce((s,o)=>s+pesoNum(pontos[o.i].peso),0);
-  div.innerHTML=`<b>${esc(sug.placa)}</b> · ${sug.encontrados.length} pedidos compatíveis · ${fmt(peso)} kg<br><span style="color:#666">${sug.score} ocorrências históricas somadas</span><br>`;
-  const btn=document.createElement('button');btn.textContent='SELECIONAR CLIENTES';btn.style.cssText='margin-top:5px;font-size:11px';
-  btn.onclick=()=>{
-   if(modoVisualizacao)return;
-   const placa=sug.placa;
-   if(grupos.some(g=>limpar(g.nome)===limpar(placa))||placasIndisponiveis.has(limpar(placa))){alert('Placa indisponível. Atualize as sugestões.');sugerir();return}
-   selecionados.clear();
-   for(const o of sug.encontrados){if(!grupoDe(pontos[o.i]))selecionados.add(o.i)}
-   $('nomeGrupo').value=placa;atualizar();
-   status(`Selecionados ${selecionados.size} pedidos para ${placa}. Revise no mapa e clique em SALVAR ROTA para confirmar.`);
-  };
-  div.appendChild(btn);lista.appendChild(div);
- }
-}
-$('carregarHistoricoGithub').onclick=async()=>{
- const url=$('historicoZipUrl').value.trim();if(!url)return alert('Informe a URL pública direta do ZIP no GitHub.');
- if(!/^https:\/\//i.test(url))return alert('Utilize um endereço HTTPS.');
- localStorage.setItem('tgrHistoricoZipUrl',url);status('Baixando e analisando histórico...');
- try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);await processarZip(await r.arrayBuffer())}catch(e){status('Falha ao consultar o ZIP: '+e.message+' Verifique o endereço direto, permissões e CORS.');}
-};
-$('historicoZipLocal').onchange=async e=>{const file=e.target.files[0];if(!file)return;status('Analisando ZIP local...');try{await processarZip(await file.arrayBuffer())}catch(err){status('Falha: '+err.message)}e.target.value=''};
-// Atualiza sugestões quando os dados da roteirização mudam, sem modificar o código existente.
-const observer=new MutationObserver(()=>{if(base.length)sugerir()});
-observer.observe($('grupos'),{childList:true});
-$('arquivo').addEventListener('change',()=>{if(base.length)setTimeout(sugerir,1400)});
 })();
 </script>
 </body>
