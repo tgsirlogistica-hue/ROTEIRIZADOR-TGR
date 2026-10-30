@@ -444,6 +444,7 @@ margin-bottom:8px
 
 </div>
 
+<div class="box somenteEdicao" id="historicoSugestoesBox"><b>HISTÓRICO DE ROTAS</b><div class="small">Consulte o ZIP do GitHub ou selecione um ZIP local para receber sugestões de placas e clientes.</div><div class="row"><input id="historicoZipUrl" placeholder="URL do ZIP no GitHub (raw ou Pages)" style="width:100%;flex-basis:100%"></div><div class="row"><button id="carregarHistoricoGithub" type="button">CONSULTAR GITHUB</button><label for="historicoZipLocal" style="cursor:pointer;background:#555;color:white;border-radius:7px;padding:9px 11px;font-size:11px;font-weight:bold">ABRIR ZIP LOCAL</label><input type="file" id="historicoZipLocal" accept=".zip" style="display:none"></div><div id="historicoSugestoesStatus" class="small" role="status">Histórico não carregado.</div><div id="historicoSugestoesLista"></div></div>
 <div class="box">
 <div class="tituloRotas"><svg class="tgrIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h1M3 12h1M3 18h1" stroke-width="3" stroke-linecap="round"/></svg><span>ROTAS SALVAS</span></div>
 <div id="grupos" class="small"><div class="tgrEmptyState"><svg class="tgrIconEmpty" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13L4 8Z"/><path d="M7 8V5h10v3M4.5 14H9l1.5 2h3l1.5-2h4.5"/></svg><span>Nenhum grupo salvo.</span></div></div>
@@ -1919,6 +1920,86 @@ document.addEventListener('DOMContentLoaded', function(){
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mover);
  else mover();
+})();
+</script>
+<script>
+/* Sugestões históricas opcionais; nunca altera rotas sem confirmação. */
+(function(){
+const $=id=>document.getElementById(id);
+let base=[],dias=0;
+const status=t=>{$('historicoSugestoesStatus').textContent=t};
+const clienteId=k=>String(k||'').split('|')[0].trim();
+const limpar=t=>String(t||'').trim().toUpperCase();
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+$('historicoZipUrl').value=localStorage.getItem('tgrHistoricoZipUrl')||'';
+async function processarZip(buffer){
+  if(typeof JSZip==='undefined'||typeof XLSX==='undefined')throw Error('Bibliotecas JSZip ou XLSX não carregadas.');
+  const zip=await JSZip.loadAsync(buffer);
+  const nomes=Object.keys(zip.files).filter(n=>/\.xlsx$/i.test(n)&&!zip.files[n].dir&&!n.split('/').pop().startsWith('~$'));
+  if(!nomes.length)throw Error('Nenhuma planilha XLSX encontrada no ZIP.');
+  const registros=new Map(),datas=new Set();let validos=0;
+  for(const nome of nomes){
+    const bytes=await zip.files[nome].async('uint8array');
+    const wb=XLSX.read(bytes,{type:'array'});
+    const sheet=wb.Sheets['ROTAS_SALVAS'];if(!sheet)continue;
+    const rows=XLSX.utils.sheet_to_json(sheet,{defval:''});
+    const diaArquivo=(nome.match(/20\d{2}-\d{2}-\d{2}/)||[])[0]||nome;
+    for(const r of rows){
+      if(limpar(r.TIPO)!=='ROTA')continue;
+      const placa=limpar(r.PLACA),cliente=clienteId(r.CHAVE_ITEM);
+      if(!placa||!cliente)continue;
+      const dia=diaArquivo;
+      // Um mesmo cliente/placa/dia conta uma única vez, inclusive em arquivos duplicados.
+      const id=dia+'|'+placa+'|'+cliente;
+      if(!registros.has(id)){registros.set(id,{dia,placa,cliente});validos++}datas.add(dia);
+    }
+  }
+  base=[...registros.values()];dias=datas.size;
+  if(!base.length)throw Error('Não foram encontrados registros válidos na aba ROTAS_SALVAS.');
+  status(`${nomes.length} planilhas; ${dias} dias; ${validos} associações únicas. Sugestões baseadas em frequência histórica.`);
+  sugerir();
+}
+function sugerir(){
+ const lista=$('historicoSugestoesLista');lista.innerHTML='';
+ if(!base.length)return;
+ if(!pontos.length){lista.textContent='Importe a planilha diária para comparar os clientes.';return}
+ const livres=placasDisponiveis.filter(p=>!placasIndisponiveis.has(limpar(p))&&!grupos.some(g=>limpar(g.nome)===limpar(p)));
+ const candidatos=pontos.map((p,i)=>({i,cliente:clienteId(p.cliente)})).filter(o=>!grupoDe(pontos[o.i]));
+ const counts=new Map();for(const r of base){const key=r.placa+'|'+r.cliente;counts.set(key,(counts.get(key)||0)+1)}
+ const sugestoes=livres.map(placa=>{
+  const encontrados=candidatos.map(o=>({...o,freq:counts.get(limpar(placa)+'|'+o.cliente)||0})).filter(o=>o.freq>0).sort((a,b)=>b.freq-a.freq);
+  return {placa,encontrados,score:encontrados.reduce((s,o)=>s+o.freq,0)};
+ }).filter(o=>o.encontrados.length).sort((a,b)=>b.score-a.score);
+ if(!sugestoes.length){lista.textContent='Nenhuma correspondência encontrada para as placas livres e os clientes atuais.';return}
+ const titulo=document.createElement('div');titulo.className='small';titulo.textContent='Sugestões indicativas, sem considerar capacidade do caminhão ou desempenho da viagem. Confira o peso antes de salvar.';lista.appendChild(titulo);
+ for(const sug of sugestoes.slice(0,12)){
+  const div=document.createElement('div');div.style.cssText='border-top:1px solid #ddd;margin-top:9px;padding-top:8px;font-size:12px';
+  const peso=sug.encontrados.reduce((s,o)=>s+pesoNum(pontos[o.i].peso),0);
+  div.innerHTML=`<b>${esc(sug.placa)}</b> · ${sug.encontrados.length} pedidos compatíveis · ${fmt(peso)} kg<br><span style="color:#666">${sug.score} ocorrências históricas somadas</span><br>`;
+  const btn=document.createElement('button');btn.textContent='SELECIONAR CLIENTES';btn.style.cssText='margin-top:5px;font-size:11px';
+  btn.onclick=()=>{
+   if(modoVisualizacao)return;
+   const placa=sug.placa;
+   if(grupos.some(g=>limpar(g.nome)===limpar(placa))||placasIndisponiveis.has(limpar(placa))){alert('Placa indisponível. Atualize as sugestões.');sugerir();return}
+   selecionados.clear();
+   for(const o of sug.encontrados){if(!grupoDe(pontos[o.i]))selecionados.add(o.i)}
+   $('nomeGrupo').value=placa;atualizar();
+   status(`Selecionados ${selecionados.size} pedidos para ${placa}. Revise no mapa e clique em SALVAR ROTA para confirmar.`);
+  };
+  div.appendChild(btn);lista.appendChild(div);
+ }
+}
+$('carregarHistoricoGithub').onclick=async()=>{
+ const url=$('historicoZipUrl').value.trim();if(!url)return alert('Informe a URL pública direta do ZIP no GitHub.');
+ if(!/^https:\/\//i.test(url))return alert('Utilize um endereço HTTPS.');
+ localStorage.setItem('tgrHistoricoZipUrl',url);status('Baixando e analisando histórico...');
+ try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);await processarZip(await r.arrayBuffer())}catch(e){status('Falha ao consultar o ZIP: '+e.message+' Verifique o endereço direto, permissões e CORS.');}
+};
+$('historicoZipLocal').onchange=async e=>{const file=e.target.files[0];if(!file)return;status('Analisando ZIP local...');try{await processarZip(await file.arrayBuffer())}catch(err){status('Falha: '+err.message)}e.target.value=''};
+// Atualiza sugestões quando os dados da roteirização mudam, sem modificar o código existente.
+const observer=new MutationObserver(()=>{if(base.length)sugerir()});
+observer.observe($('grupos'),{childList:true});
+$('arquivo').addEventListener('change',()=>{if(base.length)setTimeout(sugerir,1400)});
 })();
 </script>
 </body>
