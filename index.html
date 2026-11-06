@@ -227,7 +227,8 @@ margin-bottom:8px
 #ferramentasSelecao{position:relative!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;transform:none!important;max-width:none!important;width:max-content!important;flex-shrink:0!important;margin:0!important}
 .barraSuperiorTGR .buscaTGR{position:relative;flex:0 0 auto;margin:0!important;padding:6px;background:rgba(255,255,255,.96);border:1px solid #bbb;border-radius:11px;box-shadow:0 3px 12px #0003;box-sizing:border-box}
 .barraSuperiorTGR .buscaTGR input{width:190px;max-width:28vw;height:36px}
-.modoVisualizacao .barraSuperiorTGR{display:none!important}
+/* A pesquisa permanece visível também ao abrir uma roteirização salva. */
+.modoVisualizacao .barraSuperiorTGR{display:flex!important}
 @media(max-width:700px){.barraSuperiorTGR{gap:6px;top:12px}.barraSuperiorTGR .buscaTGR{padding:4px}.barraSuperiorTGR .buscaTGR input{width:112px;max-width:29vw;height:33px}}
 .indicadorCapacidade{margin-top:5px;font-size:11px}
 
@@ -502,7 +503,7 @@ margin-bottom:8px
     <span style="font-size:24px;font-weight:900">×</span>
   </button>
 </div>
-<div id="barraSuperiorTGR" class="barraSuperiorTGR somenteEdicao">
+<div id="barraSuperiorTGR" class="barraSuperiorTGR">
   <div class="buscaTGR">
     <input id="pesquisaClienteTGR" type="search" inputmode="numeric" autocomplete="off" placeholder="Código do cliente..." aria-label="Buscar localização pelo código do cliente">
     <span class="lupa" aria-hidden="true"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg></span>
