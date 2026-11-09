@@ -525,6 +525,21 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'&copy; OpenStreetMap contributors'
 }).addTo(map);
 
+// Marco permanente da unidade: independente da camada de entregas.
+const tgrIrece=L.marker([-11.295711077746027,-41.85273933886302],{
+  icon:L.divIcon({
+    className:'tgr-marco-unidade',
+    html:'<div style="width:28px;height:39px;filter:drop-shadow(0 1px 2px #0005)"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="39" viewBox="0 0 28 39" aria-hidden="true"><path d="M8 4V30" stroke="#333" stroke-width="1.8" stroke-linecap="round"/><path d="M9 5 Q14 3 24 6 V19 Q17 16 9 19 Z" fill="#fff" stroke="#222" stroke-width=".9"/><path d="M9 5L16.5 5.2V12H9Z M16.5 12H24V19L16.5 17.5Z M9 12H16.5V18L9 19Z" fill="#242424"/><circle cx="8" cy="32" r="4.4" fill="#c60000" stroke="#fff" stroke-width="1.5"/></svg></div>',
+    iconSize:[28,39],iconAnchor:[8,32],popupAnchor:[0,-32]
+  }),
+  interactive:true,
+  keyboard:true,
+  draggable:false,
+  zIndexOffset:900,
+  title:'TGR Bebidas — Irecê'
+}).addTo(map).bindPopup('<strong>TGR Bebidas — Irecê</strong><br>🏁 Ponto de partida das rotas<br><small>-11.295711077746027, -41.85273933886302</small>');
+
+
 let layer=L.layerGroup().addTo(map);
 let pontos=[];
 let pedidosImportadosHistorico=[]; // inclui pedidos sem coordenadas, sem criar marcadores
