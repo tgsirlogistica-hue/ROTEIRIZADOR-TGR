@@ -1632,10 +1632,12 @@ async function baixarRelatoriosZip(ignorarAviso=false){
     const excel=prepararExcelRotasSalvas();
     const historicoCsv=montarHistoricoOperacionalCsv();
     const nomeCsv=`relatorio_rotas_${data}_${hora} ${dia}.csv`;
+    const nomeRotas=`Rotas_${data}_${hora} ${dia}.csv`;
     const nomeExcel=`roteirizacao_mapa_ROTAS_SALVAS_${data} ${dia}.xlsx`;
     const nomeHistorico=`historico_operacional_TGR_${data}_${hora} ${dia}.csv`;
     const zip=new JSZip();
     zip.file(nomeCsv,csv);
+    zip.file(nomeRotas,csv);
     zip.file(nomeExcel,excel);
     zip.file(nomeHistorico,historicoCsv);
     const arquivo=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
@@ -1647,7 +1649,7 @@ async function baixarRelatoriosZip(ignorarAviso=false){
     a.click();
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
-    document.getElementById('status').innerHTML=`<b>Relatórios gerados para ${data} (${dia}).</b><br>ZIP com 3 arquivos: ${nomeCsv}, ${nomeExcel} e ${nomeHistorico}.`;
+    document.getElementById('status').innerHTML=`<b>Relatórios gerados para ${data} (${dia}).</b><br>ZIP com 4 arquivos: ${nomeCsv}, ${nomeRotas}, ${nomeExcel} e ${nomeHistorico}.`;
   }catch(erro){
     console.error(erro);
     alert('Erro ao gerar os relatórios: '+(erro.message||erro));
