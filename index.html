@@ -502,6 +502,9 @@ margin-bottom:8px
   <button id="selecionarNaoSalvos" class="ferramentaBtn" type="button" data-tip="Selecionar não salvos" aria-label="Selecionar não salvos" aria-pressed="false">
     <svg class="iconeLinha" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 7h18v18H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"/><path d="M11 16l4 4 7-8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
+  <button id="selecionarNaoSalvosManual" class="ferramentaBtn" type="button" data-tip="Selecionar não salvos manualmente" aria-label="Selecionar não salvos manualmente" aria-pressed="false">
+    <svg class="iconeLinha" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 6h20v20H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"/><path d="M16 9v14M9 16h14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+  </button>
   <button id="limpar" class="ferramentaBtn" type="button" data-tip="Limpar seleção" aria-label="Limpar seleção">
     <span style="font-size:24px;font-weight:900">×</span>
   </button>
@@ -568,6 +571,7 @@ const cores=[
   '#000000'  // preto
 ];
 let filtroNaoSalvos=false;
+let selecaoNaoSalvosManual=false;
 function pedidoNaoSalvo(p){return !grupoDe(p);}
 function podeSelecionarPedido(p){return !filtroNaoSalvos || pedidoNaoSalvo(p);}
 function sincronizarNaoSalvos(){
@@ -1215,12 +1219,32 @@ document.getElementById('salvarPlacasIndisponiveis').onclick=()=>{
 };
 
 document.getElementById('todas').onclick=()=>{if(modoVisualizacao)return; selecionados=new Set(pontos.map((p,i)=>podeSelecionarPedido(p)?i:null).filter(i=>i!==null));atualizar()};
+function atualizarBotoesNaoSalvos(){
+  const automatico=document.getElementById('selecionarNaoSalvos');
+  const manual=document.getElementById('selecionarNaoSalvosManual');
+  automatico.classList.toggle('ativa',filtroNaoSalvos && !selecaoNaoSalvosManual);
+  automatico.setAttribute('aria-pressed',String(filtroNaoSalvos && !selecaoNaoSalvosManual));
+  manual.classList.toggle('ativa',selecaoNaoSalvosManual);
+  manual.setAttribute('aria-pressed',String(selecaoNaoSalvosManual));
+}
+document.getElementById('selecionarNaoSalvosManual').onclick=()=>{
+  if(modoVisualizacao)return;
+  selecaoNaoSalvosManual=!selecaoNaoSalvosManual;
+  filtroNaoSalvos=selecaoNaoSalvosManual;
+  sincronizarNaoSalvos();
+  atualizarBotoesNaoSalvos();
+  document.getElementById('status').innerHTML=selecaoNaoSalvosManual
+    ? '<b>Seleção manual de pedidos não salvos ativa.</b><br>Clique em pedidos no mapa ou use área e polígono. Pedidos já salvos continuam visíveis, mas não podem ser selecionados.'
+    : '<b>Seleção manual de não salvos desativada.</b><br>Seleção normal restaurada.';
+  atualizar();
+};
 document.getElementById('selecionarNaoSalvos').onclick=()=>{
   if(modoVisualizacao)return;
-  filtroNaoSalvos=!filtroNaoSalvos;
+  const estavaAtivo=filtroNaoSalvos && !selecaoNaoSalvosManual;
+  selecaoNaoSalvosManual=false;
+  filtroNaoSalvos=!estavaAtivo;
+  atualizarBotoesNaoSalvos();
   const btn=document.getElementById('selecionarNaoSalvos');
-  btn.classList.toggle('ativa',filtroNaoSalvos);
-  btn.setAttribute('aria-pressed',String(filtroNaoSalvos));
   btn.setAttribute('data-tip',filtroNaoSalvos?'Desativar: Selecionar não salvos':'Selecionar não salvos');
   if(filtroNaoSalvos){
     selecionados=new Set(pontos.map((p,i)=>pedidoNaoSalvo(p)?i:null).filter(i=>i!==null));
@@ -1839,7 +1863,7 @@ document.getElementById('file').addEventListener('change',async e=>{
         `<a target="_blank" href="${url}">Abrir no Google Maps</a>`+
         popupMesmoLocal(p)
       );
-      m.on('click',()=>{if(modoPoligono)return;if(modoVisualizacao)return;selecionados.has(i)?selecionados.delete(i):selecionados.add(i);atualizar()});
+      m.on('click',()=>{if(modoPoligono)return;if(modoVisualizacao)return;selecionados.has(i)?selecionados.delete(i):(podeSelecionarPedido(p)&&selecionados.add(i));atualizar()});
     });
     map.fitBounds(L.latLngBounds(pontos.map(p=>[p.mapLat,p.mapLon])).pad(.12));
     if(!modoVisualizacao){
