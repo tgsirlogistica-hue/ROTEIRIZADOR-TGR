@@ -1649,7 +1649,7 @@ async function baixarRelatoriosZip(ignorarAviso=false){
     a.click();
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
-    document.getElementById('status').innerHTML=`<b>Relatórios gerados para ${data} (${dia}).</b><br>ZIP com 4 arquivos: ${nomeCsv}, ${nomeRotas}, ${nomeExcel} e ${nomeHistorico}.`;
+
   }catch(erro){
     console.error(erro);
     alert('Erro ao gerar os relatórios: '+(erro.message||erro));
