@@ -836,8 +836,8 @@ function dadosRotasParaPlanilha(){
   const agora=new Date().toISOString();
   grupos.forEach(g=>{
     const motorista=String(
-      g.motorista ||
       (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
+      g.motorista ||
       ''
     );
     (g.itens||[]).forEach(k=>linhas.push(['ROTA',String(g.nome||''),String(g.cor||''),String(k||''),agora,motorista,g.ordem?.includes(k)?g.ordem.indexOf(k)+1:'']));
@@ -1761,27 +1761,47 @@ document.getElementById('file').addEventListener('change',async e=>{
       ? XLSX.utils.sheet_to_json(wb.Sheets[dadosClienteSheet],{defval:null})
       : [];
 
+    // Localiza a aba e as colunas pelos cabeçalhos, sem depender de posição fixa.
+    const normalizarCabecalhoTGR=v=>String(v??'').normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toUpperCase();
     const equipesSheet=wb.SheetNames.find(n=>{
-      const nome=n.trim().toUpperCase();
+      const nome=normalizarCabecalhoTGR(n);
       return nome==='PLACAS E EQUIPE' || nome==='PLACAS E EQUIPES';
     });
-
     const dadosEquipes=equipesSheet
-      ? XLSX.utils.sheet_to_json(wb.Sheets[equipesSheet],{defval:null})
+      ? XLSX.utils.sheet_to_json(wb.Sheets[equipesSheet],{header:1,defval:''})
       : [];
-
     indiceEquipes=new Map();
-    dadosEquipes.forEach(r=>{
-      const placa=String(r['PLACA '] ?? r.PLACA ?? '').trim().toUpperCase();
-      if(placa){
-        indiceEquipes.set(placa,{
-          motorista:String(r.MOTORISTA ?? '').trim(),
-          capacidade:Number(String(r.CAPACIDADE ?? '').replace(/\./g,'').replace(',','.')) || 0,
-          ajudante1:String(r['AJUDANTE 1'] ?? '').trim(),
-          ajudante2:String(r['AJUDANTE 2'] ?? '').trim()
-        });
+    if(dadosEquipes.length){
+      const colunas=dadosEquipes[0].map(normalizarCabecalhoTGR);
+      const indiceColuna=nome=>colunas.indexOf(nome);
+      const colPlaca=indiceColuna('PLACA');
+      const colMotorista=indiceColuna('MOTORISTA');
+      const colCapacidade=indiceColuna('CAPACIDADE');
+      const colAj1=indiceColuna('AJUDANTE 1');
+      const colAj2=indiceColuna('AJUDANTE 2');
+      if(colPlaca<0 || colMotorista<0){
+        throw new Error('A aba PLACAS E EQUIPES precisa ter os cabeçalhos PLACA e MOTORISTA.');
       }
+      const campo=(linha,col)=>col>=0 ? String(linha[col]??'').trim() : '';
+      dadosEquipes.slice(1).forEach(linha=>{
+        const placa=campo(linha,colPlaca).toUpperCase();
+        if(!placa)return;
+        const capacidadeTexto=campo(linha,colCapacidade).replace(/\./g,'').replace(',','.');
+        indiceEquipes.set(placa,{
+          motorista:campo(linha,colMotorista),
+          capacidade:Number(capacidadeTexto)||0,
+          ajudante1:campo(linha,colAj1),
+          ajudante2:campo(linha,colAj2)
+        });
+      });
+    }
+    // Rotas anteriormente salvas também recebem o nome atualizado da planilha.
+    grupos.forEach(grupo=>{
+      const equipe=indiceEquipes.get(String(grupo.nome||'').trim().toUpperCase());
+      if(equipe)grupo.motorista=equipe.motorista;
     });
+    salvarLocal(false);
 
     placasDisponiveis=[...indiceEquipes.keys()];
     atualizarSelectRotas();
