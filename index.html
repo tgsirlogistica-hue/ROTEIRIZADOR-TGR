@@ -525,21 +525,6 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Marco permanente da unidade: independente da camada de entregas.
-const tgrIrece=L.marker([-11.295711077746027,-41.85273933886302],{
-  icon:L.divIcon({
-    className:'tgr-marco-unidade',
-    html:'<div style="width:28px;height:39px;filter:drop-shadow(0 1px 2px #0005)"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="39" viewBox="0 0 28 39" aria-hidden="true"><path d="M8 4V30" stroke="#333" stroke-width="1.8" stroke-linecap="round"/><path d="M9 5 Q14 3 24 6 V19 Q17 16 9 19 Z" fill="#fff" stroke="#222" stroke-width=".9"/><path d="M9 5L16.5 5.2V12H9Z M16.5 12H24V19L16.5 17.5Z M9 12H16.5V18L9 19Z" fill="#242424"/><circle cx="8" cy="32" r="4.4" fill="#c60000" stroke="#fff" stroke-width="1.5"/></svg></div>',
-    iconSize:[28,39],iconAnchor:[8,32],popupAnchor:[0,-32]
-  }),
-  interactive:true,
-  keyboard:true,
-  draggable:false,
-  zIndexOffset:900,
-  title:'TGR Bebidas — Irecê'
-}).addTo(map).bindPopup('<strong>TGR Bebidas — Irecê</strong><br>🏁 Ponto de partida das rotas<br><small>-11.295711077746027, -41.85273933886302</small>');
-
-
 let layer=L.layerGroup().addTo(map);
 let pontos=[];
 let pedidosImportadosHistorico=[]; // inclui pedidos sem coordenadas, sem criar marcadores
@@ -836,8 +821,8 @@ function dadosRotasParaPlanilha(){
   const agora=new Date().toISOString();
   grupos.forEach(g=>{
     const motorista=String(
-      (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
       g.motorista ||
+      (indiceEquipes.get(String(g.nome||'').trim().toUpperCase())||{}).motorista ||
       ''
     );
     (g.itens||[]).forEach(k=>linhas.push(['ROTA',String(g.nome||''),String(g.cor||''),String(k||''),agora,motorista,g.ordem?.includes(k)?g.ordem.indexOf(k)+1:'']));
@@ -1761,47 +1746,27 @@ document.getElementById('file').addEventListener('change',async e=>{
       ? XLSX.utils.sheet_to_json(wb.Sheets[dadosClienteSheet],{defval:null})
       : [];
 
-    // Localiza a aba e as colunas pelos cabeçalhos, sem depender de posição fixa.
-    const normalizarCabecalhoTGR=v=>String(v??'').normalize('NFD')
-      .replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toUpperCase();
     const equipesSheet=wb.SheetNames.find(n=>{
-      const nome=normalizarCabecalhoTGR(n);
+      const nome=n.trim().toUpperCase();
       return nome==='PLACAS E EQUIPE' || nome==='PLACAS E EQUIPES';
     });
+
     const dadosEquipes=equipesSheet
-      ? XLSX.utils.sheet_to_json(wb.Sheets[equipesSheet],{header:1,defval:''})
+      ? XLSX.utils.sheet_to_json(wb.Sheets[equipesSheet],{defval:null})
       : [];
+
     indiceEquipes=new Map();
-    if(dadosEquipes.length){
-      const colunas=dadosEquipes[0].map(normalizarCabecalhoTGR);
-      const indiceColuna=nome=>colunas.indexOf(nome);
-      const colPlaca=indiceColuna('PLACA');
-      const colMotorista=indiceColuna('MOTORISTA');
-      const colCapacidade=indiceColuna('CAPACIDADE');
-      const colAj1=indiceColuna('AJUDANTE 1');
-      const colAj2=indiceColuna('AJUDANTE 2');
-      if(colPlaca<0 || colMotorista<0){
-        throw new Error('A aba PLACAS E EQUIPES precisa ter os cabeçalhos PLACA e MOTORISTA.');
-      }
-      const campo=(linha,col)=>col>=0 ? String(linha[col]??'').trim() : '';
-      dadosEquipes.slice(1).forEach(linha=>{
-        const placa=campo(linha,colPlaca).toUpperCase();
-        if(!placa)return;
-        const capacidadeTexto=campo(linha,colCapacidade).replace(/\./g,'').replace(',','.');
+    dadosEquipes.forEach(r=>{
+      const placa=String(r['PLACA '] ?? r.PLACA ?? '').trim().toUpperCase();
+      if(placa){
         indiceEquipes.set(placa,{
-          motorista:campo(linha,colMotorista),
-          capacidade:Number(capacidadeTexto)||0,
-          ajudante1:campo(linha,colAj1),
-          ajudante2:campo(linha,colAj2)
+          motorista:String(r.MOTORISTA ?? '').trim(),
+          capacidade:Number(String(r.CAPACIDADE ?? '').replace(/\./g,'').replace(',','.')) || 0,
+          ajudante1:String(r['AJUDANTE 1'] ?? '').trim(),
+          ajudante2:String(r['AJUDANTE 2'] ?? '').trim()
         });
-      });
-    }
-    // Rotas anteriormente salvas também recebem o nome atualizado da planilha.
-    grupos.forEach(grupo=>{
-      const equipe=indiceEquipes.get(String(grupo.nome||'').trim().toUpperCase());
-      if(equipe)grupo.motorista=equipe.motorista;
+      }
     });
-    salvarLocal(false);
 
     placasDisponiveis=[...indiceEquipes.keys()];
     atualizarSelectRotas();
